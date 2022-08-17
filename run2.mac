@@ -1,0 +1,8 @@
+# Macro file for Hadron Tharaphy
+
+
+# Initialize kernel
+/run/initialize
+
+# beamOn
+/run/beamOn 1000
