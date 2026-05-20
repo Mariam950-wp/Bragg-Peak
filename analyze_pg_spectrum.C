@@ -2,19 +2,19 @@
 /// \brief ROOT macro: plot prompt-gamma intensities vs proton range (depth).
 ///
 /// Reads every PG_Spectrum_VS_Angle_<depth>.root file found in `dataDir`,
-/// integrates each angular histogram, and produces four output canvases
-/// saved as PNG files in `outDir`:
+/// integrates each angular histogram, and writes results to a single output
+/// ROOT file with the following structure:
 ///
-///   PG_intensity_vs_depth_broad_angles.png
-///   PG_intensity_vs_depth_4p4MeV.png
-///   PG_intensity_vs_depth_9p6MeV.png
-///   PG_spectra_overlay_all_depths.png
+///   graphs/broad_angles/   – one TGraph (intensity vs depth) per angular bin
+///   graphs/4p4MeV/         – one TGraph per detector angle for the 4.4 MeV line
+///   graphs/9p6MeV/         – one TGraph per detector angle for the 9.6 MeV line
+///   canvases/              – four TCanvas objects (fully styled, ready to view)
 ///
 /// Usage (interactive):
-///   root -l 'analyze_pg_spectrum.C("./", "./")'
+///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
 ///
 /// Usage (batch):
-///   root -l -b -q 'analyze_pg_spectrum.C("./", "./")'
+///   root -l -b -q 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
 
 #include "TFile.h"
 #include "TH1D.h"
@@ -62,8 +62,8 @@ static const Color_t kPalette[kNColours] = {
 // ============================================================
 //  Main macro
 // ============================================================
-void analyze_pg_spectrum(const char* dataDir = "./",
-                         const char* outDir  = "./")
+void analyze_pg_spectrum(const char* dataDir  = "./",
+                         const char* outFile  = "PG_analysis.root")
 {
     gStyle->SetOptStat(0);
     gStyle->SetOptTitle(0);
@@ -105,6 +105,20 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     Printf("Found %d ROOT file(s):", nFiles);
     for (auto& kv : files)
         Printf("  depth = %.1f mm  ->  %s", kv.first, kv.second.c_str());
+
+    // --------------------------------------------------------
+    //  Open output ROOT file and create sub-directories
+    // --------------------------------------------------------
+    TFile* fOut = TFile::Open(outFile, "RECREATE");
+    if (!fOut || fOut->IsZombie()) {
+        ::Error("analyze_pg_spectrum", "Cannot create output file: %s", outFile);
+        return;
+    }
+    TDirectory* dGraphs       = fOut->mkdir("graphs");
+    TDirectory* dBroadGraphs  = dGraphs->mkdir("broad_angles");
+    TDirectory* d44Graphs     = dGraphs->mkdir("4p4MeV");
+    TDirectory* d96Graphs     = dGraphs->mkdir("9p6MeV");
+    TDirectory* dCanvases     = fOut->mkdir("canvases");
 
     // --------------------------------------------------------
     //  2. Define histograms to read
@@ -188,6 +202,30 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     }
 
     // --------------------------------------------------------
+    //  Name TGraphs and save them to the output file
+    // --------------------------------------------------------
+    for (Int_t i = 0; i < nBroad; ++i) {
+        gBroad[i]->SetName(broadNames[i]);
+        gBroad[i]->SetTitle(Form("%s;Depth (mm);Intensity (counts / primary)",
+                                 broadNames[i]));
+        dBroadGraphs->cd();
+        gBroad[i]->Write();
+    }
+    for (Int_t j = 0; j < nAngles; ++j) {
+        g44[j]->SetName(Form("4p4MeV_Gamma_%ddeg", specificAngles[j]));
+        g44[j]->SetTitle(Form("4.4 MeV gamma %d deg;Depth (mm);Intensity (counts / primary)",
+                               specificAngles[j]));
+        d44Graphs->cd();
+        g44[j]->Write();
+
+        g96[j]->SetName(Form("9p6MeV_Gamma_%ddeg", specificAngles[j]));
+        g96[j]->SetTitle(Form("9.6 MeV gamma %d deg;Depth (mm);Intensity (counts / primary)",
+                               specificAngles[j]));
+        d96Graphs->cd();
+        g96[j]->Write();
+    }
+
+    // --------------------------------------------------------
     //  Helper lambda: style one TGraph
     // --------------------------------------------------------
     auto StyleGraph = [](TGraph* g, Color_t col, Style_t marker, Int_t idx) {
@@ -246,16 +284,16 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         title.DrawLatex(0.50, 0.96,
             "Prompt #gamma Intensity vs Depth (full spectrum 1.5#font[122]{-}12 MeV)");
 
-        std::string outPath = std::string(outDir) + "/PG_intensity_vs_depth_broad_angles.png";
-        c->SaveAs(outPath.c_str());
-        Printf("  Saved: %s", outPath.c_str());
+        dCanvases->cd();
+        c->Write("cBroadAngles");
+        Printf("  Written canvas: canvases/cBroadAngles");
     }
 
     // --------------------------------------------------------
     //  Helper lambda: draw one "specific gamma-line" canvas
     // --------------------------------------------------------
     auto DrawGammaLine = [&](TGraph* grArr[], const char* energyStr,
-                              const char* tag, const char* outDir_) {
+                              const char* tag) {
         TCanvas* c = new TCanvas(Form("c_%s", tag),
                                  Form("%s MeV gamma", energyStr), 900, 600);
         c->SetLeftMargin(0.13);
@@ -309,17 +347,16 @@ void analyze_pg_spectrum(const char* dataDir = "./",
                         Form("Prompt #gamma Intensity vs Depth (%s MeV line)",
                              energyStr));
 
-        std::string outPath = std::string(outDir_) +
-                              "/PG_intensity_vs_depth_" + tag + ".png";
-        c->SaveAs(outPath.c_str());
-        Printf("  Saved: %s", outPath.c_str());
+        dCanvases->cd();
+        c->Write(Form("c_%s", tag));
+        Printf("  Written canvas: canvases/c_%s", tag);
     };
 
     // --------------------------------------------------------
     //  5. Plot: 4.4 MeV and 9.6 MeV gamma lines
     // --------------------------------------------------------
-    DrawGammaLine(g44, "4.4", "4p4MeV", outDir);
-    DrawGammaLine(g96, "9.6", "9p6MeV", outDir);
+    DrawGammaLine(g44, "4.4", "4p4MeV");
+    DrawGammaLine(g96, "9.6", "9p6MeV");
 
     // --------------------------------------------------------
     //  6. Plot: spectrum overlay – one pad per angular bin
@@ -414,11 +451,20 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         suptitle.DrawLatex(0.50, 0.995,
             "Prompt #gamma Spectra at Different Depths");
 
-        std::string outPath = std::string(outDir) +
-                              "/PG_spectra_overlay_all_depths.png";
-        c->SaveAs(outPath.c_str());
-        Printf("  Saved: %s", outPath.c_str());
+        dCanvases->cd();
+        c->Write("cSpectraOverlay");
+        Printf("  Written canvas: canvases/cSpectraOverlay");
     }
 
+    // --------------------------------------------------------
+    //  Close output file
+    // --------------------------------------------------------
+    fOut->Write("", TObject::kOverwrite);
+    fOut->Close();
+    Printf("\nResults written to: %s", outFile);
+    Printf("  graphs/broad_angles/  – %d TGraphs (intensity vs depth)", nBroad);
+    Printf("  graphs/4p4MeV/        – %d TGraphs", nAngles);
+    Printf("  graphs/9p6MeV/        – %d TGraphs", nAngles);
+    Printf("  canvases/             – 4 TCanvas objects");
     Printf("\nDone.");
 }
