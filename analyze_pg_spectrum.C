@@ -127,6 +127,9 @@ std::vector<FileEntry> CollectInputFiles(const char* dataDir)
 //  3. FillBroadAngleGraphs
 //     For each depth file, integrate the broad angular-bin spectra
 //     and record the result in one TGraph per bin.
+//     GetSumOfWeights() returns the raw sum of bin contents with no
+//     per-entry normalisation; the histograms are already normalised
+//     per primary particle by the simulation.
 // ================================================================
 void FillBroadAngleGraphs(const std::vector<FileEntry>& files,
                            TGraph* graphs[])
@@ -142,7 +145,7 @@ void FillBroadAngleGraphs(const std::vector<FileEntry>& files,
         for (Int_t i = 0; i < kNBroad; ++i) {
             TH1D* h = (TH1D*)f->Get(kBroadNames[i]);
             graphs[i]->SetPoint(iFile, files[iFile].depth,
-                                h ? h->Integral() : 0.);
+                                h ? h->GetSumOfWeights() : 0.);
         }
         f->Close();
         delete f;
@@ -160,6 +163,9 @@ void FillBroadAngleGraphs(const std::vector<FileEntry>& files,
 //     (one histogram per detector angle) and fill one TGraph per angle.
 //     `energyTag` selects the histogram family, e.g. "4.400000" or "9.600000".
 //     `graphTag`  is used to build object names, e.g. "4p4MeV" or "9p6MeV".
+//     GetSumOfWeights() returns the raw sum of bin contents with no
+//     per-entry normalisation; the histograms are already normalised
+//     per primary particle by the simulation.
 // ================================================================
 void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           TGraph* graphs[],
@@ -180,7 +186,7 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           energyTag, kSpecificAngles[j]);
             TH1D* h = (TH1D*)f->Get(hname);
             graphs[j]->SetPoint(iFile, files[iFile].depth,
-                                h ? h->Integral() : 0.);
+                                h ? h->GetSumOfWeights() : 0.);
         }
         f->Close();
         delete f;
@@ -195,6 +201,8 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
 // ================================================================
 //  5. DrawBroadAnglesCanvas
 //     One canvas with all six broad angular-bin intensity curves.
+//     TMultiGraph is used so the Y-axis range is derived from the
+//     actual data maximum and all content stays within the frame.
 // ================================================================
 TCanvas* DrawBroadAnglesCanvas(TGraph* graphs[],
                                 const std::vector<FileEntry>& files)
@@ -203,38 +211,38 @@ TCanvas* DrawBroadAnglesCanvas(TGraph* graphs[],
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
-    Double_t ymax = 0.;
-    for (Int_t i = 0; i < kNBroad; ++i)
-        for (Int_t p = 0; p < (Int_t)files.size(); ++p)
-            ymax = std::max(ymax, graphs[i]->GetY()[p]);
-
-    TGraph* frame = new TGraph(2);
-    frame->SetPoint(0, files.front().depth - 5., 0.);
-    frame->SetPoint(1, files.back().depth  + 5., ymax * 1.25);
-    frame->SetMarkerStyle(1);
-    frame->Draw("AP");
-    frame->GetXaxis()->SetTitle("Depth (mm)");
-    frame->GetYaxis()->SetTitle("Intensity (counts / primary)");
-    frame->GetXaxis()->SetTitleSize(0.05);
-    frame->GetYaxis()->SetTitleSize(0.05);
-    frame->GetXaxis()->SetLabelSize(0.04);
-    frame->GetYaxis()->SetLabelSize(0.04);
-    frame->GetYaxis()->SetTitleOffset(1.3);
+    TMultiGraph* mg = new TMultiGraph("mgBroad", "");
 
     TLegend* leg = new TLegend(0.55, 0.55, 0.88, 0.88);
     leg->SetHeader("Detection angle", "C");
     leg->SetBorderSize(1);
     leg->SetTextSize(0.038);
 
+    Double_t ymax = 0.;
     for (Int_t i = 0; i < kNBroad; ++i) {
+        for (Int_t p = 0; p < (Int_t)files.size(); ++p)
+            ymax = std::max(ymax, graphs[i]->GetY()[p]);
+
         graphs[i]->SetLineColor(kBroadColors[i]);
         graphs[i]->SetMarkerColor(kBroadColors[i]);
         graphs[i]->SetMarkerStyle(kBroadMarkers[i]);
         graphs[i]->SetMarkerSize(1.2);
         graphs[i]->SetLineWidth(2);
-        graphs[i]->Draw("LP SAME");
+        mg->Add(graphs[i], "LP");
         leg->AddEntry(graphs[i], kBroadLabels[i], "lp");
     }
+
+    mg->SetMinimum(0.);
+    mg->SetMaximum(ymax * 1.15);
+    mg->Draw("A");
+    mg->GetXaxis()->SetTitle("Depth (mm)");
+    mg->GetYaxis()->SetTitle("Intensity (counts / primary)");
+    mg->GetXaxis()->SetTitleSize(0.05);
+    mg->GetYaxis()->SetTitleSize(0.05);
+    mg->GetXaxis()->SetLabelSize(0.04);
+    mg->GetYaxis()->SetLabelSize(0.04);
+    mg->GetYaxis()->SetTitleOffset(1.3);
+
     leg->Draw();
 
     TLatex title;
@@ -251,6 +259,8 @@ TCanvas* DrawBroadAnglesCanvas(TGraph* graphs[],
 //  6. DrawGammaLineCanvas
 //     One canvas with intensity-vs-depth curves for one gamma line
 //     (e.g. 4.4 MeV or 9.6 MeV), one curve per detector angle.
+//     TMultiGraph is used so the Y-axis range is derived from the
+//     actual data maximum and all content stays within the frame.
 // ================================================================
 TCanvas* DrawGammaLineCanvas(TGraph* graphs[],
                               const std::vector<FileEntry>& files,
@@ -262,24 +272,7 @@ TCanvas* DrawGammaLineCanvas(TGraph* graphs[],
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
-    Double_t ymax = 0.;
-    for (Int_t j = 0; j < kNAngles; ++j)
-        for (Int_t p = 0; p < (Int_t)files.size(); ++p)
-            ymax = std::max(ymax, graphs[j]->GetY()[p]);
-    if (ymax == 0.) ymax = 1e-8;
-
-    TGraph* frame = new TGraph(2);
-    frame->SetPoint(0, files.front().depth - 5., 0.);
-    frame->SetPoint(1, files.back().depth  + 5., ymax * 1.30);
-    frame->SetMarkerStyle(1);
-    frame->Draw("AP");
-    frame->GetXaxis()->SetTitle("Depth (mm)");
-    frame->GetYaxis()->SetTitle("Intensity (counts / primary)");
-    frame->GetXaxis()->SetTitleSize(0.05);
-    frame->GetYaxis()->SetTitleSize(0.05);
-    frame->GetXaxis()->SetLabelSize(0.04);
-    frame->GetYaxis()->SetLabelSize(0.04);
-    frame->GetYaxis()->SetTitleOffset(1.3);
+    TMultiGraph* mg = new TMultiGraph(canvasName, "");
 
     TLegend* leg = new TLegend(0.55, 0.50, 0.88, 0.88);
     leg->SetHeader("Detector angle", "C");
@@ -287,10 +280,13 @@ TCanvas* DrawGammaLineCanvas(TGraph* graphs[],
     leg->SetTextSize(0.035);
     leg->SetNColumns(2);
 
+    Double_t ymax = 0.;
     for (Int_t j = 0; j < kNAngles; ++j) {
         Bool_t nonzero = kFALSE;
-        for (Int_t p = 0; p < (Int_t)files.size(); ++p)
-            if (graphs[j]->GetY()[p] > 0.) { nonzero = kTRUE; break; }
+        for (Int_t p = 0; p < (Int_t)files.size(); ++p) {
+            ymax = std::max(ymax, graphs[j]->GetY()[p]);
+            if (graphs[j]->GetY()[p] > 0.) nonzero = kTRUE;
+        }
         if (!nonzero) continue;
 
         graphs[j]->SetLineColor(kAngleColors[j]);
@@ -298,9 +294,22 @@ TCanvas* DrawGammaLineCanvas(TGraph* graphs[],
         graphs[j]->SetMarkerStyle(kAngleMarkers[j]);
         graphs[j]->SetMarkerSize(1.2);
         graphs[j]->SetLineWidth(2);
-        graphs[j]->Draw("LP SAME");
+        mg->Add(graphs[j], "LP");
         leg->AddEntry(graphs[j], Form("%d#circ", kSpecificAngles[j]), "lp");
     }
+
+    if (ymax == 0.) ymax = 1e-8;
+    mg->SetMinimum(0.);
+    mg->SetMaximum(ymax * 1.15);
+    mg->Draw("A");
+    mg->GetXaxis()->SetTitle("Depth (mm)");
+    mg->GetYaxis()->SetTitle("Intensity (counts / primary)");
+    mg->GetXaxis()->SetTitleSize(0.05);
+    mg->GetYaxis()->SetTitleSize(0.05);
+    mg->GetXaxis()->SetLabelSize(0.04);
+    mg->GetYaxis()->SetLabelSize(0.04);
+    mg->GetYaxis()->SetTitleOffset(1.3);
+
     leg->Draw();
 
     TLatex title;
