@@ -252,6 +252,10 @@ TCanvas* DrawBroadAnglesCanvas(TGraph* graphs[],
     title.DrawLatex(0.50, 0.96,
         "Prompt #gamma Intensity vs Depth (full spectrum 1.5#font[122]{-}12 MeV)");
 
+    // Repaint the frame border on top of all primitives so that any graph
+    // line segment that reaches the axis boundary is visually clipped.
+    gPad->RedrawAxis();
+
     return c;
 }
 
@@ -318,6 +322,10 @@ TCanvas* DrawGammaLineCanvas(TGraph* graphs[],
     title.SetTextAlign(22);
     title.DrawLatex(0.50, 0.96,
         Form("Prompt #gamma Intensity vs Depth (%s MeV line)", energyStr));
+
+    // Repaint the frame border on top of all primitives so that any graph
+    // line segment that reaches the axis boundary is visually clipped.
+    gPad->RedrawAxis();
 
     return c;
 }
