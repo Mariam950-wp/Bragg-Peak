@@ -6,7 +6,8 @@
 ///
 ///   graphs/4p4MeV/         – TGraph per detector angle for the 4.4 MeV line
 ///   graphs/6p13MeV/        – TGraph per detector angle for the 6.13 MeV line
-///   canvases/              – one canvas per angle: 4.4 + 6.13 MeV overlaid
+///   graphs/9p6MeV/         – TGraph per detector angle for the 9.6 MeV line
+///   canvases/              – one canvas per angle: 4.4 + 6.13 + 9.6 MeV overlaid
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -138,10 +139,10 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
 
 // ================================================================
 //  4. DrawOverlayCanvases
-//     For each detector angle, draw 4.4 MeV and 6.13 MeV intensity
+//     For each detector angle, draw 4.4, 6.13 and 9.6 MeV intensity
 //     vs depth on the same canvas.
 // ================================================================
-TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, Int_t angle)
+TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
 {
     TCanvas* c = new TCanvas(Form("c_overlay_%ddeg", angle),
                              Form("Angle %d deg", angle), 800, 600);
@@ -160,6 +161,12 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, Int_t angle)
     g613->SetMarkerSize(0.9);
     g613->SetLineWidth(2);
 
+    g96->SetLineColor(kGreen + 2);
+    g96->SetMarkerColor(kGreen + 2);
+    g96->SetMarkerStyle(22);
+    g96->SetMarkerSize(0.9);
+    g96->SetLineWidth(2);
+
     // draw on same axes
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth (mm)");
@@ -167,11 +174,15 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, Int_t angle)
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
     g613->Draw("PL SAME");
+    g96->Draw("PL SAME");
 
-    TLegend* leg = new TLegend(0.55, 0.72, 0.88, 0.88);
+    gPad->RedrawAxis();
+
+    TLegend* leg = new TLegend(0.55, 0.65, 0.88, 0.88);
     leg->SetBorderSize(0);
     leg->AddEntry(g44,  "4.4 MeV",  "lp");
     leg->AddEntry(g613, "6.13 MeV", "lp");
+    leg->AddEntry(g96,  "9.6 MeV",  "lp");
     leg->Draw();
 
     TLatex lat;
@@ -188,7 +199,7 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, Int_t angle)
 //     under named sub-directories.
 // ================================================================
 void WriteResultsToFile(TFile* fOut,
-                         TGraph* g44[], TGraph* g613[],
+                         TGraph* g44[], TGraph* g613[], TGraph* g96[],
                          TCanvas* canvases[])
 {
     TDirectory* dGraphs = fOut->mkdir("graphs");
@@ -201,6 +212,10 @@ void WriteResultsToFile(TFile* fOut,
     d613->cd();
     for (Int_t j = 0; j < kNAngles; ++j) g613[j]->Write();
 
+    TDirectory* d96 = dGraphs->mkdir("9p6MeV");
+    d96->cd();
+    for (Int_t j = 0; j < kNAngles; ++j) g96[j]->Write();
+
     TDirectory* dCanv = fOut->mkdir("canvases");
     dCanv->cd();
     for (Int_t j = 0; j < kNAngles; ++j) canvases[j]->Write();
@@ -208,6 +223,7 @@ void WriteResultsToFile(TFile* fOut,
     Printf("Output structure:");
     Printf("  graphs/4p4MeV/        – %d TGraphs", kNAngles);
     Printf("  graphs/6p13MeV/       – %d TGraphs", kNAngles);
+    Printf("  graphs/9p6MeV/        – %d TGraphs", kNAngles);
     Printf("  canvases/             – %d overlay canvases", kNAngles);
 }
 
@@ -229,19 +245,21 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         Printf("  depth = %.1f mm  ->  %s", fe.depth, fe.path.c_str());
 
     // --- fill intensity-vs-depth graphs ---
-    TGraph* g44[kNAngles], *g613[kNAngles];
+    TGraph* g44[kNAngles], *g613[kNAngles], *g96[kNAngles];
     for (Int_t j = 0; j < kNAngles; ++j) {
         g44[j]  = new TGraph((Int_t)files.size());
         g613[j] = new TGraph((Int_t)files.size());
+        g96[j]  = new TGraph((Int_t)files.size());
     }
 
     FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV");
     FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV");
+    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV");
 
     // --- draw one overlay canvas per angle ---
     TCanvas* canvases[kNAngles];
     for (Int_t j = 0; j < kNAngles; ++j)
-        canvases[j] = DrawOverlayCanvas(g44[j], g613[j], kSpecificAngles[j]);
+        canvases[j] = DrawOverlayCanvas(g44[j], g613[j], g96[j], kSpecificAngles[j]);
 
     // --- write everything to the output file ---
     TFile* fOut = TFile::Open(outFile, "RECREATE");
@@ -249,7 +267,7 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         ::Error("analyze_pg_spectrum", "Cannot create: %s", outFile);
         return;
     }
-    WriteResultsToFile(fOut, g44, g613, canvases);
+    WriteResultsToFile(fOut, g44, g613, g96, canvases);
     fOut->Write("", TObject::kOverwrite);
     fOut->Close();
 
