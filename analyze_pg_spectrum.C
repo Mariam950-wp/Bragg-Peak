@@ -33,6 +33,8 @@
 //  Configuration: histogram names, labels, colours
 // ================================================================
 
+// Bragg peak position for 130 MeV protons in PMMA (mm)
+static const Double_t kBraggPeakMm = 107.0;
 static const Int_t kNAngles = 9;
 static const Int_t kSpecificAngles[kNAngles] = {30, 50, 60, 65, 90, 115, 120, 130, 150};
 
@@ -134,14 +136,14 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                 for (Int_t ib = bLo; ib <= bHi; ++ib)
                     totalEnergy += h->GetBinContent(ib) * ax->GetBinCenter(ib);
             }
-            graphs[j]->SetPoint(iFile, files[iFile].depth, totalEnergy);
+            graphs[j]->SetPoint(iFile, files[iFile].depth / kBraggPeakMm, totalEnergy);
         }
         f->Close();
         delete f;
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth (mm);Total Photon Energy (MeV / primary)",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Total Photon Energy (MeV / primary)",
                                  graphTag, kSpecificAngles[j]));
     }
 }
@@ -178,7 +180,7 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
 
     // draw on same axes
     g44->Draw("APL");
-    g44->GetXaxis()->SetTitle("Depth (mm)");
+    g44->GetXaxis()->SetTitle("Depth / d_{BP}");
     g44->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
