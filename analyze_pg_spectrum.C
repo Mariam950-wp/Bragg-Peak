@@ -102,14 +102,16 @@ std::vector<FileEntry> CollectInputFiles(const char* dataDir)
 //     (one histogram per detector angle) and fill one TGraph per angle.
 //     `energyTag` selects the histogram family, e.g. "4.400000" or "9.600000".
 //     `graphTag`  is used to build object names, e.g. "4p4MeV" or "9p6MeV".
-//     GetSumOfWeights() returns the raw sum of bin contents with no
-//     per-entry normalisation; the histograms are already normalised
-//     per primary particle by the simulation.
+//     `eLo` / `eHi` define the energy integration range in MeV.
+//     The integral is energy-weighted (bin content * bin centre) so the
+//     result is total photon energy in MeV per primary, not a photon count.
 // ================================================================
 void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           TGraph* graphs[],
                           const char* energyTag,
-                          const char* graphTag)
+                          const char* graphTag,
+                          Double_t eLo,
+                          Double_t eHi)
 {
     const Int_t nFiles = (Int_t)files.size();
     for (Int_t iFile = 0; iFile < nFiles; ++iFile) {
@@ -124,15 +126,22 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
             std::snprintf(hname, sizeof(hname), "%s_MeV_Gamma_%d_deg",
                           energyTag, kSpecificAngles[j]);
             TH1D* h = (TH1D*)f->Get(hname);
-            graphs[j]->SetPoint(iFile, files[iFile].depth,
-                                h ? h->GetSumOfWeights() : 0.);
+            Double_t totalEnergy = 0.;
+            if (h) {
+                TAxis* ax   = h->GetXaxis();
+                Int_t  bLo  = ax->FindBin(eLo);
+                Int_t  bHi  = ax->FindBin(eHi);
+                for (Int_t ib = bLo; ib <= bHi; ++ib)
+                    totalEnergy += h->GetBinContent(ib) * ax->GetBinCenter(ib);
+            }
+            graphs[j]->SetPoint(iFile, files[iFile].depth, totalEnergy);
         }
         f->Close();
         delete f;
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth (mm);Intensity (counts / primary)",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth (mm);Total Photon Energy (MeV / primary)",
                                  graphTag, kSpecificAngles[j]));
     }
 }
@@ -170,7 +179,7 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
     // draw on same axes
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth (mm)");
-    g44->GetYaxis()->SetTitle("Intensity (counts / primary)");
+    g44->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
     g613->Draw("PL SAME");
@@ -252,9 +261,9 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         g96[j]  = new TGraph((Int_t)files.size());
     }
 
-    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV");
-    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV");
-    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV");
+    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0);
+    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3);
+    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0);
 
     // --- draw one overlay canvas per angle ---
     TCanvas* canvases[kNAngles];
