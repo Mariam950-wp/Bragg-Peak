@@ -8,6 +8,7 @@
 ///   graphs/6p13MeV/        – TGraph per detector angle for the 6.13 MeV line
 ///   graphs/9p6MeV/         – TGraph per detector angle for the 9.6 MeV line
 ///   canvases/              – one canvas per angle: 4.4 + 6.13 + 9.6 MeV overlaid
+///                            + one dedicated canvas for 6.13 MeV (all angles)
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -205,13 +206,62 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
 }
 
 // ================================================================
-//  5. WriteResultsToFile
+//  5. Draw6p13Canvas
+//     Plot all detector angles for the 6.13 MeV line on one canvas,
+//     each angle as a separate TGraph, colour-coded.
+// ================================================================
+TCanvas* Draw6p13Canvas(TGraph* g613[])
+{
+    const Int_t palette[] = {
+        kBlue+1, kRed+1, kGreen+2, kMagenta+1, kCyan+2,
+        kOrange+7, kViolet+1, kTeal+3, kPink+6
+    };
+    const Int_t markers[] = {20, 21, 22, 23, 24, 25, 26, 27, 28};
+
+    TCanvas* c = new TCanvas("c_6p13MeV_allAngles",
+                             "6.13 MeV line – all angles", 900, 650);
+    c->SetLeftMargin(0.13);
+    c->SetBottomMargin(0.13);
+
+    TLegend* leg = new TLegend(0.65, 0.45, 0.92, 0.92);
+    leg->SetBorderSize(0);
+    leg->SetHeader("Detector angle", "C");
+
+    for (Int_t j = 0; j < kNAngles; ++j) {
+        g613[j]->SetLineColor(palette[j]);
+        g613[j]->SetMarkerColor(palette[j]);
+        g613[j]->SetMarkerStyle(markers[j]);
+        g613[j]->SetMarkerSize(0.9);
+        g613[j]->SetLineWidth(2);
+        g613[j]->Draw(j == 0 ? "APL" : "PL SAME");
+        if (j == 0) {
+            g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
+            g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+            g613[0]->GetXaxis()->SetTitleSize(0.05);
+            g613[0]->GetYaxis()->SetTitleSize(0.05);
+        }
+        leg->AddEntry(g613[j], Form("%d#circ", kSpecificAngles[j]), "lp");
+    }
+
+    gPad->RedrawAxis();
+    leg->Draw();
+
+    TLatex lat;
+    lat.SetNDC();
+    lat.SetTextSize(0.04);
+    lat.DrawLatex(0.14, 0.92, "6.13 MeV prompt-gamma line");
+
+    return c;
+}
+
+// ================================================================
+//  6. WriteResultsToFile
 //     Save all TGraphs and canvases into the output ROOT file
 //     under named sub-directories.
 // ================================================================
 void WriteResultsToFile(TFile* fOut,
                          TGraph* g44[], TGraph* g613[], TGraph* g96[],
-                         TCanvas* canvases[])
+                         TCanvas* canvases[], TCanvas* c6p13)
 {
     TDirectory* dGraphs = fOut->mkdir("graphs");
 
@@ -230,12 +280,13 @@ void WriteResultsToFile(TFile* fOut,
     TDirectory* dCanv = fOut->mkdir("canvases");
     dCanv->cd();
     for (Int_t j = 0; j < kNAngles; ++j) canvases[j]->Write();
+    c6p13->Write();
 
     Printf("Output structure:");
     Printf("  graphs/4p4MeV/        – %d TGraphs", kNAngles);
     Printf("  graphs/6p13MeV/       – %d TGraphs", kNAngles);
     Printf("  graphs/9p6MeV/        – %d TGraphs", kNAngles);
-    Printf("  canvases/             – %d overlay canvases", kNAngles);
+    Printf("  canvases/             – %d overlay canvases + 1 6.13 MeV canvas", kNAngles);
 }
 
 // ================================================================
@@ -272,13 +323,16 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     for (Int_t j = 0; j < kNAngles; ++j)
         canvases[j] = DrawOverlayCanvas(g44[j], g613[j], g96[j], kSpecificAngles[j]);
 
+    // --- dedicated 6.13 MeV canvas: all angles on one plot ---
+    TCanvas* c6p13 = Draw6p13Canvas(g613);
+
     // --- write everything to the output file ---
     TFile* fOut = TFile::Open(outFile, "RECREATE");
     if (!fOut || fOut->IsZombie()) {
         ::Error("analyze_pg_spectrum", "Cannot create: %s", outFile);
         return;
     }
-    WriteResultsToFile(fOut, g44, g613, g96, canvases);
+    WriteResultsToFile(fOut, g44, g613, g96, canvases, c6p13);
     fOut->Write("", TObject::kOverwrite);
     fOut->Close();
 
