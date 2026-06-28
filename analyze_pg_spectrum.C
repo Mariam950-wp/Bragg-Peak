@@ -44,10 +44,21 @@ static const Int_t    kSpecificAngles[kNAngles] = {90};
 // Detector geometry at 90 degrees
 // FOV: target slice thickness (mm)
 // kDeltaTheta: polar angular range covered by detector (rad)
-// kDeltaOmega = 2*pi*sin(90 deg)*DeltaTheta  (sr)
+// kDeltaOmega = 2*pi*sin(90 deg)*DeltaTheta  (sr) — simulation ring solid angle
+// Note: experimental detector solid angle is 4.5e-3 sr (point detector).
+// Since the phi distribution is uniform, dN/dOmega is the same for ring and
+// point detector, so kDeltaOmega cancels correctly in the differential yield.
 static const Double_t kFOV        = 2.0;
 static const Double_t kDeltaTheta = 0.018865;
 static const Double_t kDeltaOmega = 2.0 * TMath::Pi() * kDeltaTheta; // sin(90)=1
+
+// HPGe detector efficiency from Kelleter et al. 2017 (Monte-Carlo determined).
+// Multiply simulation yield by efficiency to bring it to the same scale as
+// the raw-detected-count yield before efficiency correction.
+// The 9.6 MeV efficiency is not reported in the reference; left as 1.0.
+static const Double_t kEff44  = 0.039;
+static const Double_t kEff613 = 0.025;
+static const Double_t kEff96  = 1.0;  // unknown — no experimental counterpart
 
 // One entry per input file
 struct FileEntry {
@@ -124,7 +135,8 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           const char* energyTag,
                           const char* graphTag,
                           Double_t eLo,
-                          Double_t eHi)
+                          Double_t eHi,
+                          Double_t efficiency)
 {
     const Int_t nFiles = (Int_t)files.size();
     for (Int_t iFile = 0; iFile < nFiles; ++iFile) {
@@ -147,8 +159,8 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                 for (Int_t ib = bLo; ib <= bHi; ++ib)
                     nGamma += h->GetBinContent(ib);
             }
-            // Yield per proton per (FOV * DeltaOmega)
-            Double_t yield = nGamma / (kFOV * kDeltaOmega);
+            // Yield per proton per (FOV * DeltaOmega), scaled by detector efficiency
+            Double_t yield = nGamma * efficiency / (kFOV * kDeltaOmega);
             graphs[j]->SetPoint(iFile, files[iFile].depth / kBraggPeakMm, yield);
         }
         f->Close();
@@ -156,7 +168,7 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
                                  graphTag, kSpecificAngles[j]));
     }
 }
@@ -199,7 +211,7 @@ TCanvas* Draw44_96Canvas(TGraph* g44, TGraph* g96, Int_t angle)
     Double_t yMax44_96 = std::max(GraphYMax(g44), GraphYMax(g96));
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g44->GetYaxis()->SetTitle("N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
+    g44->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetRangeUser(0., yMax44_96 * 1.1);
@@ -240,7 +252,7 @@ TCanvas* Draw6p13Canvas(TGraph* g613[], Int_t angle)
     Double_t yMax613 = GraphYMax(g613[0]);
     g613[0]->Draw("APL");
     g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g613[0]->GetYaxis()->SetTitle("N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
+    g613[0]->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
     g613[0]->GetXaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetRangeUser(0., yMax613 * 1.1);
@@ -320,9 +332,9 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         g96[j]  = new TGraph((Int_t)files.size());
     }
 
-    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0);
-    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3);
-    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0);
+    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0, kEff44);
+    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3, kEff613);
+    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0, kEff96);
 
     // --- canvas 1: 4.4 MeV + 9.6 MeV overlaid ---
     TCanvas* c44_96 = Draw44_96Canvas(g44[0], g96[0], kSpecificAngles[0]);
