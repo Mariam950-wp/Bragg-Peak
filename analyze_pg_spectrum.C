@@ -1,14 +1,15 @@
 /// \file analyze_pg_spectrum.C
-/// \brief ROOT macro: prompt-gamma intensity vs proton range (depth).
+/// \brief ROOT macro: prompt-gamma intensity vs proton range (depth) at 90 degrees.
 ///
 /// Reads every PG_Spectrum_VS_Angle_<depth>.root file in `dataDir`,
-/// integrates each angular histogram, and writes results to one output file:
+/// integrates the 90-degree detector histogram for each gamma line,
+/// and writes results to one output file:
 ///
-///   graphs/4p4MeV/         – TGraph per detector angle for the 4.4 MeV line
-///   graphs/6p13MeV/        – TGraph per detector angle for the 6.13 MeV line
-///   graphs/9p6MeV/         – TGraph per detector angle for the 9.6 MeV line
-///   canvases/              – one canvas per angle: 4.4 + 6.13 + 9.6 MeV overlaid
-///                            + one dedicated canvas for 6.13 MeV (all angles)
+///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg
+///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg
+///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg
+///   canvases/              – one overlay canvas: 4.4 + 6.13 + 9.6 MeV at 90 deg
+///                            + one dedicated canvas for the 6.13 MeV line at 90 deg
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -36,8 +37,8 @@
 
 // Bragg peak position for 130 MeV protons in PMMA (mm)
 static const Double_t kBraggPeakMm = 107.0;
-static const Int_t kNAngles = 9;
-static const Int_t kSpecificAngles[kNAngles] = {30, 50, 60, 65, 90, 115, 120, 130, 150};
+static const Int_t kNAngles = 1;
+static const Int_t kSpecificAngles[kNAngles] = {90};
 
 // One entry per input file
 struct FileEntry {
@@ -207,49 +208,37 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
 
 // ================================================================
 //  5. Draw6p13Canvas
-//     Plot all detector angles for the 6.13 MeV line on one canvas,
-//     each angle as a separate TGraph, colour-coded.
+//     Plot the 6.13 MeV prompt-gamma line at 90 degrees vs depth.
 // ================================================================
 TCanvas* Draw6p13Canvas(TGraph* g613[])
 {
-    const Int_t palette[] = {
-        kBlue+1, kRed+1, kGreen+2, kMagenta+1, kCyan+2,
-        kOrange+7, kViolet+1, kTeal+3, kPink+6
-    };
-    const Int_t markers[] = {20, 21, 22, 23, 24, 25, 26, 27, 28};
-
-    TCanvas* c = new TCanvas("c_6p13MeV_allAngles",
-                             "6.13 MeV line – all angles", 900, 650);
+    TCanvas* c = new TCanvas("c_6p13MeV_90deg",
+                             "6.13 MeV line – 90 deg", 900, 650);
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
-    TLegend* leg = new TLegend(0.65, 0.45, 0.92, 0.92);
-    leg->SetBorderSize(0);
-    leg->SetHeader("Detector angle", "C");
-
-    for (Int_t j = 0; j < kNAngles; ++j) {
-        g613[j]->SetLineColor(palette[j]);
-        g613[j]->SetMarkerColor(palette[j]);
-        g613[j]->SetMarkerStyle(markers[j]);
-        g613[j]->SetMarkerSize(0.9);
-        g613[j]->SetLineWidth(2);
-        g613[j]->Draw(j == 0 ? "APL" : "PL SAME");
-        if (j == 0) {
-            g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-            g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
-            g613[0]->GetXaxis()->SetTitleSize(0.05);
-            g613[0]->GetYaxis()->SetTitleSize(0.05);
-        }
-        leg->AddEntry(g613[j], Form("%d#circ", kSpecificAngles[j]), "lp");
-    }
+    g613[0]->SetLineColor(kRed + 1);
+    g613[0]->SetMarkerColor(kRed + 1);
+    g613[0]->SetMarkerStyle(21);
+    g613[0]->SetMarkerSize(0.9);
+    g613[0]->SetLineWidth(2);
+    g613[0]->Draw("APL");
+    g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
+    g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+    g613[0]->GetXaxis()->SetTitleSize(0.05);
+    g613[0]->GetYaxis()->SetTitleSize(0.05);
 
     gPad->RedrawAxis();
+
+    TLegend* leg = new TLegend(0.65, 0.75, 0.92, 0.92);
+    leg->SetBorderSize(0);
+    leg->AddEntry(g613[0], "90#circ", "lp");
     leg->Draw();
 
     TLatex lat;
     lat.SetNDC();
     lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, "6.13 MeV prompt-gamma line");
+    lat.DrawLatex(0.14, 0.92, "6.13 MeV prompt-gamma line – 90#circ detector");
 
     return c;
 }
@@ -282,11 +271,11 @@ void WriteResultsToFile(TFile* fOut,
     for (Int_t j = 0; j < kNAngles; ++j) canvases[j]->Write();
     c6p13->Write();
 
-    Printf("Output structure:");
-    Printf("  graphs/4p4MeV/        – %d TGraphs", kNAngles);
-    Printf("  graphs/6p13MeV/       – %d TGraphs", kNAngles);
-    Printf("  graphs/9p6MeV/        – %d TGraphs", kNAngles);
-    Printf("  canvases/             – %d overlay canvases + 1 6.13 MeV canvas", kNAngles);
+    Printf("Output structure (90 deg only):");
+    Printf("  graphs/4p4MeV/        – 1 TGraph (90 deg)");
+    Printf("  graphs/6p13MeV/       – 1 TGraph (90 deg)");
+    Printf("  graphs/9p6MeV/        – 1 TGraph (90 deg)");
+    Printf("  canvases/             – 1 overlay canvas + 1 dedicated 6.13 MeV canvas");
 }
 
 // ================================================================
