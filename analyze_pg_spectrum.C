@@ -3,13 +3,13 @@
 ///
 /// Reads every PG_Spectrum_VS_Angle_<depth>.root file in `dataDir`,
 /// integrates the 90-degree detector histogram for each gamma line,
-/// and writes results to one output file:
+/// normalises each graph to its own maximum, and writes results to one output file:
 ///
-///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg
-///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg
-///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg
-///   canvases/              – one overlay canvas: 4.4 + 6.13 + 9.6 MeV at 90 deg
-///                            + one dedicated canvas for the 6.13 MeV line at 90 deg
+///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg (normalised)
+///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg (normalised)
+///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg (normalised)
+///   canvases/              – one canvas: 4.4 + 9.6 MeV overlaid (normalised)
+///                            + one dedicated canvas for the 6.13 MeV line (normalised)
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -145,20 +145,36 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Total Photon Energy (MeV / primary)",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Normalised Intensity",
                                  graphTag, kSpecificAngles[j]));
     }
 }
 
 // ================================================================
-//  4. DrawOverlayCanvases
-//     For each detector angle, draw 4.4, 6.13 and 9.6 MeV intensity
-//     vs depth on the same canvas.
+//  3b. NormaliseGraph
+//      Divide all Y values by the graph's maximum Y so the peak = 1.
 // ================================================================
-TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
+void NormaliseGraph(TGraph* g)
 {
-    TCanvas* c = new TCanvas(Form("c_overlay_%ddeg", angle),
-                             Form("Angle %d deg", angle), 800, 600);
+    const Int_t n = g->GetN();
+    if (n == 0) return;
+    Double_t yMax = -1e300;
+    for (Int_t i = 0; i < n; ++i)
+        if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
+    if (yMax <= 0.) return;
+    for (Int_t i = 0; i < n; ++i)
+        g->GetY()[i] /= yMax;
+}
+
+// ================================================================
+//  4. Draw44_96Canvas
+//     Draw 4.4 MeV and 9.6 MeV normalised intensity vs depth
+//     on the same canvas at 90 degrees.
+// ================================================================
+TCanvas* Draw44_96Canvas(TGraph* g44, TGraph* g96, Int_t angle)
+{
+    TCanvas* c = new TCanvas(Form("c_44_96_%ddeg", angle),
+                             Form("4.4 + 9.6 MeV – %d deg", angle), 800, 600);
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
@@ -168,52 +184,44 @@ TCanvas* DrawOverlayCanvas(TGraph* g44, TGraph* g613, TGraph* g96, Int_t angle)
     g44->SetMarkerSize(0.9);
     g44->SetLineWidth(2);
 
-    g613->SetLineColor(kRed + 1);
-    g613->SetMarkerColor(kRed + 1);
-    g613->SetMarkerStyle(21);
-    g613->SetMarkerSize(0.9);
-    g613->SetLineWidth(2);
-
     g96->SetLineColor(kGreen + 2);
     g96->SetMarkerColor(kGreen + 2);
     g96->SetMarkerStyle(22);
     g96->SetMarkerSize(0.9);
     g96->SetLineWidth(2);
 
-    // draw on same axes
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g44->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+    g44->GetYaxis()->SetTitle("Normalised Intensity");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
-    g613->Draw("PL SAME");
+    g44->GetYaxis()->SetRangeUser(0., 1.1);
     g96->Draw("PL SAME");
 
     gPad->RedrawAxis();
 
-    TLegend* leg = new TLegend(0.55, 0.65, 0.88, 0.88);
+    TLegend* leg = new TLegend(0.55, 0.72, 0.88, 0.88);
     leg->SetBorderSize(0);
-    leg->AddEntry(g44,  "4.4 MeV",  "lp");
-    leg->AddEntry(g613, "6.13 MeV", "lp");
-    leg->AddEntry(g96,  "9.6 MeV",  "lp");
+    leg->AddEntry(g44, "4.4 MeV",  "lp");
+    leg->AddEntry(g96, "9.6 MeV",  "lp");
     leg->Draw();
 
     TLatex lat;
     lat.SetNDC();
     lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, Form("Detector angle: %d#circ", angle));
+    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – 4.4 + 9.6 MeV – %d#circ detector", angle));
 
     return c;
 }
 
 // ================================================================
 //  5. Draw6p13Canvas
-//     Plot the 6.13 MeV prompt-gamma line at 90 degrees vs depth.
+//     Plot the 6.13 MeV normalised prompt-gamma line at 90 degrees vs depth.
 // ================================================================
-TCanvas* Draw6p13Canvas(TGraph* g613[])
+TCanvas* Draw6p13Canvas(TGraph* g613[], Int_t angle)
 {
-    TCanvas* c = new TCanvas("c_6p13MeV_90deg",
-                             "6.13 MeV line – 90 deg", 900, 650);
+    TCanvas* c = new TCanvas(Form("c_6p13MeV_%ddeg", angle),
+                             Form("6.13 MeV – %d deg", angle), 900, 650);
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
@@ -224,21 +232,22 @@ TCanvas* Draw6p13Canvas(TGraph* g613[])
     g613[0]->SetLineWidth(2);
     g613[0]->Draw("APL");
     g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+    g613[0]->GetYaxis()->SetTitle("Normalised Intensity");
     g613[0]->GetXaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetTitleSize(0.05);
+    g613[0]->GetYaxis()->SetRangeUser(0., 1.1);
 
     gPad->RedrawAxis();
 
-    TLegend* leg = new TLegend(0.65, 0.75, 0.92, 0.92);
+    TLegend* leg = new TLegend(0.65, 0.78, 0.92, 0.92);
     leg->SetBorderSize(0);
-    leg->AddEntry(g613[0], "90#circ", "lp");
+    leg->AddEntry(g613[0], "6.13 MeV", "lp");
     leg->Draw();
 
     TLatex lat;
     lat.SetNDC();
     lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, "6.13 MeV prompt-gamma line – 90#circ detector");
+    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – 6.13 MeV – %d#circ detector", angle));
 
     return c;
 }
@@ -250,7 +259,7 @@ TCanvas* Draw6p13Canvas(TGraph* g613[])
 // ================================================================
 void WriteResultsToFile(TFile* fOut,
                          TGraph* g44[], TGraph* g613[], TGraph* g96[],
-                         TCanvas* canvases[], TCanvas* c6p13)
+                         TCanvas* c44_96, TCanvas* c6p13)
 {
     TDirectory* dGraphs = fOut->mkdir("graphs");
 
@@ -268,14 +277,14 @@ void WriteResultsToFile(TFile* fOut,
 
     TDirectory* dCanv = fOut->mkdir("canvases");
     dCanv->cd();
-    for (Int_t j = 0; j < kNAngles; ++j) canvases[j]->Write();
+    c44_96->Write();
     c6p13->Write();
 
-    Printf("Output structure (90 deg only):");
+    Printf("Output structure (90 deg only, normalised to maximum):");
     Printf("  graphs/4p4MeV/        – 1 TGraph (90 deg)");
     Printf("  graphs/6p13MeV/       – 1 TGraph (90 deg)");
     Printf("  graphs/9p6MeV/        – 1 TGraph (90 deg)");
-    Printf("  canvases/             – 1 overlay canvas + 1 dedicated 6.13 MeV canvas");
+    Printf("  canvases/             – 4.4+9.6 MeV overlay canvas + 6.13 MeV canvas");
 }
 
 // ================================================================
@@ -307,13 +316,18 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3);
     FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0);
 
-    // --- draw one overlay canvas per angle ---
-    TCanvas* canvases[kNAngles];
-    for (Int_t j = 0; j < kNAngles; ++j)
-        canvases[j] = DrawOverlayCanvas(g44[j], g613[j], g96[j], kSpecificAngles[j]);
+    // --- normalise each graph to its own maximum ---
+    for (Int_t j = 0; j < kNAngles; ++j) {
+        NormaliseGraph(g44[j]);
+        NormaliseGraph(g613[j]);
+        NormaliseGraph(g96[j]);
+    }
 
-    // --- dedicated 6.13 MeV canvas: all angles on one plot ---
-    TCanvas* c6p13 = Draw6p13Canvas(g613);
+    // --- canvas 1: 4.4 MeV + 9.6 MeV overlaid ---
+    TCanvas* c44_96 = Draw44_96Canvas(g44[0], g96[0], kSpecificAngles[0]);
+
+    // --- canvas 2: 6.13 MeV dedicated ---
+    TCanvas* c6p13 = Draw6p13Canvas(g613, kSpecificAngles[0]);
 
     // --- write everything to the output file ---
     TFile* fOut = TFile::Open(outFile, "RECREATE");
@@ -321,7 +335,7 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         ::Error("analyze_pg_spectrum", "Cannot create: %s", outFile);
         return;
     }
-    WriteResultsToFile(fOut, g44, g613, g96, canvases, c6p13);
+    WriteResultsToFile(fOut, g44, g613, g96, c44_96, c6p13);
     fOut->Write("", TObject::kOverwrite);
     fOut->Close();
 
