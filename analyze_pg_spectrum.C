@@ -25,6 +25,7 @@
 #include "TPad.h"
 #include "TLatex.h"
 #include "TSystem.h"
+#include "TMath.h"
 
 #include <vector>
 #include <string>
@@ -36,9 +37,17 @@
 // ================================================================
 
 // Bragg peak position for 130 MeV protons in PMMA (mm)
-static const Double_t kBraggPeakMm = 107.0;
-static const Int_t kNAngles = 1;
-static const Int_t kSpecificAngles[kNAngles] = {90};
+static const Double_t kBraggPeakMm  = 107.0;
+static const Int_t    kNAngles       = 1;
+static const Int_t    kSpecificAngles[kNAngles] = {90};
+
+// Detector geometry at 90 degrees
+// FOV: target slice thickness (mm)
+// kDeltaTheta: polar angular range covered by detector (rad)
+// kDeltaOmega = 2*pi*sin(90 deg)*DeltaTheta  (sr)
+static const Double_t kFOV        = 2.0;
+static const Double_t kDeltaTheta = 0.018865;
+static const Double_t kDeltaOmega = 2.0 * TMath::Pi() * kDeltaTheta; // sin(90)=1
 
 // One entry per input file
 struct FileEntry {
@@ -130,22 +139,24 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
             std::snprintf(hname, sizeof(hname), "%s_MeV_Gamma_%d_deg",
                           energyTag, kSpecificAngles[j]);
             TH1D* h = (TH1D*)f->Get(hname);
-            Double_t totalEnergy = 0.;
+            Double_t nGamma = 0.;
             if (h) {
-                TAxis* ax   = h->GetXaxis();
-                Int_t  bLo  = ax->FindBin(eLo);
-                Int_t  bHi  = ax->FindBin(eHi);
+                TAxis* ax  = h->GetXaxis();
+                Int_t  bLo = ax->FindBin(eLo);
+                Int_t  bHi = ax->FindBin(eHi);
                 for (Int_t ib = bLo; ib <= bHi; ++ib)
-                    totalEnergy += h->GetBinContent(ib) * ax->GetBinCenter(ib);
+                    nGamma += h->GetBinContent(ib);
             }
-            graphs[j]->SetPoint(iFile, files[iFile].depth / kBraggPeakMm, totalEnergy);
+            // Yield per proton per (FOV * DeltaOmega)
+            Double_t yield = nGamma / (kFOV * kDeltaOmega);
+            graphs[j]->SetPoint(iFile, files[iFile].depth / kBraggPeakMm, yield);
         }
         f->Close();
         delete f;
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Total Photon Energy (MeV / primary)",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
                                  graphTag, kSpecificAngles[j]));
     }
 }
@@ -188,7 +199,7 @@ TCanvas* Draw44_96Canvas(TGraph* g44, TGraph* g96, Int_t angle)
     Double_t yMax44_96 = std::max(GraphYMax(g44), GraphYMax(g96));
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g44->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+    g44->GetYaxis()->SetTitle("N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetRangeUser(0., yMax44_96 * 1.1);
@@ -229,7 +240,7 @@ TCanvas* Draw6p13Canvas(TGraph* g613[], Int_t angle)
     Double_t yMax613 = GraphYMax(g613[0]);
     g613[0]->Draw("APL");
     g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
+    g613[0]->GetYaxis()->SetTitle("N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
     g613[0]->GetXaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetRangeUser(0., yMax613 * 1.1);
