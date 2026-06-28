@@ -3,13 +3,13 @@
 ///
 /// Reads every PG_Spectrum_VS_Angle_<depth>.root file in `dataDir`,
 /// integrates the 90-degree detector histogram for each gamma line,
-/// normalises each graph to its own maximum, and writes results to one output file:
+/// and writes results to one output file:
 ///
-///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg (normalised)
-///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg (normalised)
-///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg (normalised)
-///   canvases/              – one canvas: 4.4 + 9.6 MeV overlaid (normalised)
-///                            + one dedicated canvas for the 6.13 MeV line (normalised)
+///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg
+///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg
+///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg
+///   canvases/              – one canvas: 4.4 + 9.6 MeV overlaid
+///                            + one dedicated canvas for the 6.13 MeV line
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -145,25 +145,20 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Normalised Intensity",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};Total Photon Energy (MeV / primary)",
                                  graphTag, kSpecificAngles[j]));
     }
 }
 
 // ================================================================
-//  3b. NormaliseGraph
-//      Divide all Y values by the graph's maximum Y so the peak = 1.
+//  3b. GraphYMax – return the maximum Y value of a TGraph.
 // ================================================================
-void NormaliseGraph(TGraph* g)
+Double_t GraphYMax(TGraph* g)
 {
-    const Int_t n = g->GetN();
-    if (n == 0) return;
     Double_t yMax = -1e300;
-    for (Int_t i = 0; i < n; ++i)
+    for (Int_t i = 0; i < g->GetN(); ++i)
         if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
-    if (yMax <= 0.) return;
-    for (Int_t i = 0; i < n; ++i)
-        g->GetY()[i] /= yMax;
+    return yMax;
 }
 
 // ================================================================
@@ -190,12 +185,13 @@ TCanvas* Draw44_96Canvas(TGraph* g44, TGraph* g96, Int_t angle)
     g96->SetMarkerSize(0.9);
     g96->SetLineWidth(2);
 
+    Double_t yMax44_96 = std::max(GraphYMax(g44), GraphYMax(g96));
     g44->Draw("APL");
     g44->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g44->GetYaxis()->SetTitle("Normalised Intensity");
+    g44->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
     g44->GetXaxis()->SetTitleSize(0.05);
     g44->GetYaxis()->SetTitleSize(0.05);
-    g44->GetYaxis()->SetRangeUser(0., 1.1);
+    g44->GetYaxis()->SetRangeUser(0., yMax44_96 * 1.1);
     g96->Draw("PL SAME");
 
     gPad->RedrawAxis();
@@ -230,12 +226,13 @@ TCanvas* Draw6p13Canvas(TGraph* g613[], Int_t angle)
     g613[0]->SetMarkerStyle(21);
     g613[0]->SetMarkerSize(0.9);
     g613[0]->SetLineWidth(2);
+    Double_t yMax613 = GraphYMax(g613[0]);
     g613[0]->Draw("APL");
     g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g613[0]->GetYaxis()->SetTitle("Normalised Intensity");
+    g613[0]->GetYaxis()->SetTitle("Total Photon Energy (MeV / primary)");
     g613[0]->GetXaxis()->SetTitleSize(0.05);
     g613[0]->GetYaxis()->SetTitleSize(0.05);
-    g613[0]->GetYaxis()->SetRangeUser(0., 1.1);
+    g613[0]->GetYaxis()->SetRangeUser(0., yMax613 * 1.1);
 
     gPad->RedrawAxis();
 
@@ -280,7 +277,7 @@ void WriteResultsToFile(TFile* fOut,
     c44_96->Write();
     c6p13->Write();
 
-    Printf("Output structure (90 deg only, normalised to maximum):");
+    Printf("Output structure (90 deg only):");
     Printf("  graphs/4p4MeV/        – 1 TGraph (90 deg)");
     Printf("  graphs/6p13MeV/       – 1 TGraph (90 deg)");
     Printf("  graphs/9p6MeV/        – 1 TGraph (90 deg)");
@@ -315,13 +312,6 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0);
     FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3);
     FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0);
-
-    // --- normalise each graph to its own maximum ---
-    for (Int_t j = 0; j < kNAngles; ++j) {
-        NormaliseGraph(g44[j]);
-        NormaliseGraph(g613[j]);
-        NormaliseGraph(g96[j]);
-    }
 
     // --- canvas 1: 4.4 MeV + 9.6 MeV overlaid ---
     TCanvas* c44_96 = Draw44_96Canvas(g44[0], g96[0], kSpecificAngles[0]);
