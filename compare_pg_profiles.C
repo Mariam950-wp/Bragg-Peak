@@ -3,10 +3,12 @@
 /// PG_analysis.root files (one per subdirectory of a "mother" directory,
 /// e.g. one per physics list) on shared canvases.
 ///
-/// Expected layout:
+/// Expected layout (subdirectories for several beam energies can coexist
+/// in the same motherDir; `energyTag` selects which ones to compare):
 ///   motherDir/
 ///     prompt_gamma_spectra_130MeV_QGSP_BIC_HP_EMZ/PG_analysis.root
 ///     prompt_gamma_spectra_130MeV_QBBC/PG_analysis.root
+///     prompt_gamma_spectra_100MeV_QGSP_BIC_HP_EMZ/PG_analysis.root
 ///     ...
 ///
 /// Each PG_analysis.root must contain (as produced by analyze_pg_spectrum.C):
@@ -14,13 +16,14 @@
 ///   graphs/6p13MeV/6p13MeV_Gamma_90deg
 ///   graphs/9p6MeV/9p6MeV_Gamma_90deg
 ///
-/// For each gamma line, all subdirectories' graphs are drawn on one canvas
-/// with a legend (labelled by subdirectory name, common prefix stripped).
-/// Output (canvases as PNG + one ROOT file with all canvases/graphs) is
-/// written to `motherDir` itself.
+/// Only subdirectories whose name contains `energyTag` (e.g. "130MeV") are
+/// used. For each gamma line, the matching subdirectories' graphs are drawn
+/// on one canvas with a legend (labelled by subdirectory name, common prefix
+/// stripped). Output (canvases as PNG + one ROOT file with all
+/// canvases/graphs), named after `energyTag`, is written to `motherDir`.
 ///
 /// Usage:
-///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir")'
+///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV")'
 
 #include "TFile.h"
 #include "TGraph.h"
@@ -77,10 +80,11 @@ void ApplyGlobalStyle()
 
 // ================================================================
 //  2. CollectRunDirs
-//     Every immediate subdirectory of motherDir that contains a
-//     PG_analysis.root becomes one overlay entry.
+//     Every immediate subdirectory of motherDir whose name contains
+//     `energyTag` and that holds a PG_analysis.root becomes one overlay
+//     entry. Pass an empty energyTag to match every subdirectory.
 // ================================================================
-std::vector<RunEntry> CollectRunDirs(const char* motherDir)
+std::vector<RunEntry> CollectRunDirs(const char* motherDir, const char* energyTag)
 {
     std::vector<RunEntry> runs;
     void* dh = gSystem->OpenDirectory(motherDir);
@@ -92,6 +96,7 @@ std::vector<RunEntry> CollectRunDirs(const char* motherDir)
     while ((entry = gSystem->GetDirEntry(dh)) != nullptr) {
         std::string name(entry);
         if (name == "." || name == "..") continue;
+        if (energyTag[0] != '\0' && name.find(energyTag) == std::string::npos) continue;
 
         std::string subDir  = std::string(motherDir) + "/" + name;
         std::string rootFile = subDir + "/PG_analysis.root";
@@ -139,7 +144,7 @@ void StripCommonPrefix(std::vector<RunEntry>& runs)
 // ================================================================
 TCanvas* DrawOverlayCanvas(const LineCfg& cfg,
                             const std::vector<TGraph*>& graphs,
-                            const std::vector<RunEntry>& runs)
+                            const std::vector<std::string>& labels)
 {
     TCanvas* c = new TCanvas(Form("c_compare_%s", cfg.fileTag),
                               Form("%s comparison", cfg.label), 900, 650);
@@ -172,7 +177,7 @@ TCanvas* DrawOverlayCanvas(const LineCfg& cfg,
             g->GetYaxis()->SetTitleSize(0.05);
             g->GetYaxis()->SetRangeUser(0., yMax * 1.1);
         }
-        leg->AddEntry(g, runs[i].label.c_str(), "lp");
+        leg->AddEntry(g, labels[i].c_str(), "lp");
     }
     leg->Draw();
     gPad->RedrawAxis();
@@ -188,21 +193,23 @@ TCanvas* DrawOverlayCanvas(const LineCfg& cfg,
 // ================================================================
 //  Main entry point
 // ================================================================
-void compare_pg_profiles(const char* motherDir = "./")
+void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "130MeV")
 {
     ApplyGlobalStyle();
 
-    std::vector<RunEntry> runs = CollectRunDirs(motherDir);
+    std::vector<RunEntry> runs = CollectRunDirs(motherDir, energyTag);
     if (runs.empty()) {
-        ::Error("compare_pg_profiles", "No PG_analysis.root found under %s", motherDir);
+        ::Error("compare_pg_profiles", "No PG_analysis.root found under %s matching \"%s\"",
+                 motherDir, energyTag);
         return;
     }
     StripCommonPrefix(runs);
 
-    Printf("Found %d run(s):", (Int_t)runs.size());
+    Printf("Found %d run(s) for %s:", (Int_t)runs.size(), energyTag);
     for (auto& r : runs) Printf("  %-30s  ->  %s", r.label.c_str(), r.path.c_str());
 
-    std::string outPath = std::string(motherDir) + "/PG_comparison.root";
+    std::string tagSuffix = (energyTag[0] != '\0') ? (std::string("_") + energyTag) : "";
+    std::string outPath = std::string(motherDir) + "/PG_comparison" + tagSuffix + ".root";
     TFile* fOut = TFile::Open(outPath.c_str(), "RECREATE");
     if (!fOut || fOut->IsZombie()) {
         ::Error("compare_pg_profiles", "Cannot create: %s", outPath.c_str());
@@ -213,6 +220,7 @@ void compare_pg_profiles(const char* motherDir = "./")
     for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
         const LineCfg& cfg = kLines[iLine];
         std::vector<TGraph*> graphs;
+        std::vector<std::string> labels;
 
         for (const auto& run : runs) {
             TFile* f = TFile::Open(run.path.c_str(), "READ");
@@ -231,14 +239,16 @@ void compare_pg_profiles(const char* motherDir = "./")
                 continue;
             }
             graphs.push_back((TGraph*)g->Clone());
+            labels.push_back(run.label);
             f->Close();
             delete f;
         }
         if (graphs.empty()) continue;
 
-        TCanvas* c = DrawOverlayCanvas(cfg, graphs, runs);
+        TCanvas* c = DrawOverlayCanvas(cfg, graphs, labels);
 
-        std::string pngPath = std::string(motherDir) + "/PG_comparison_" + cfg.fileTag + ".png";
+        std::string pngPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
+                              "_" + cfg.fileTag + ".png";
         c->SaveAs(pngPath.c_str());
 
         c->Write();
@@ -246,7 +256,7 @@ void compare_pg_profiles(const char* motherDir = "./")
         TDirectory* dLine = dGraphs->mkdir(cfg.dirTag);
         dLine->cd();
         for (std::size_t i = 0; i < graphs.size(); ++i) {
-            graphs[i]->SetName(Form("%s_%s", cfg.dirTag, runs[i].label.c_str()));
+            graphs[i]->SetName(Form("%s_%s", cfg.dirTag, labels[i].c_str()));
             graphs[i]->Write();
         }
         fOut->cd();
