@@ -102,20 +102,13 @@ where $z$ denotes the degrader thickness (i.e.\ the effective emission depth), $
 
 The depth axis is expressed as the ratio $z/d_\mathrm{BP}$, where $d_\mathrm{BP} = 107$~mm is the Bragg peak depth for 130.87~MeV protons in PMMA.
 
-The 4.44~MeV ($^{12}$C) and 9.6~MeV ($^{16}$O) yield profiles are presented together in Figure~\ref{fig:44_96}, and the 6.13~MeV ($^{16}$O) profile is shown separately in Figure~\ref{fig:613}. It should be noted that the 9.6~MeV line, while accessible in the Geant4 simulation, was not measured in the Cracow experiment and is therefore presented here as a Geant4-only result without an experimental counterpart.
+The 4.44~MeV ($^{12}$C) and 9.6~MeV ($^{16}$O) yield profiles are presented together in Figure~\ref{fig:44_96}. It should be noted that the 9.6~MeV line, while accessible in the Geant4 simulation, was not measured in the Cracow experiment and is therefore presented here as a Geant4-only result without an experimental counterpart.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.75\linewidth]{images/c_44_96_90deg.png}
     \caption{Geant4 prompt-gamma yield profiles for the 4.44~MeV ($^{12}$C, blue) and 9.6~MeV ($^{16}$O, green) lines at 90$^\circ$ detection angle as a function of normalised depth $z/d_\mathrm{BP}$. The yield is expressed per primary proton, per mm of target thickness, and per sr of solid angle. The 9.6~MeV profile has no experimental counterpart in the Cracow dataset.}
     \label{fig:44_96}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.75\linewidth]{images/c_6p13MeV_90deg.png}
-    \caption{Geant4 prompt-gamma yield profile for the 6.13~MeV ($^{16}$O) line at 90$^\circ$ detection angle as a function of normalised depth $z/d_\mathrm{BP}$. Units are the same as in Figure~\ref{fig:44_96}.}
-    \label{fig:613}
 \end{figure}
 
 \subsection{Sensitivity to the Geant4 physics list}
@@ -159,7 +152,7 @@ The simulated $^{12}$C$_{4.44\to\mathrm{g.s.}}$ yield profile at 90$^\circ$ is s
 
 It is important to note that Geant4 does not properly resolve the fine structure of the 4.44~MeV transition, which is in reality a closely spaced doublet arising from two distinct $^{12}$C de-excitation paths rather than a single line. The physics lists used in this work reproduce the two components neither at the correct relative energies nor with the correct relative intensities, so the simulated line shape around 4.44~MeV cannot be taken as quantitatively reliable at the level of the doublet substructure. Despite this limitation, the \emph{integrated} intensity of the line — summed across the doublet and evaluated as a function of depth — still tracks the Bragg peak position with the same distal fall-off behaviour seen in the experimental data. This is the central result of the present study: even though Geant4 fails to describe the detailed doublet structure of the 4.44~MeV transition, the overall depth-dependent intensity of the $^{12}$C and $^{16}$O prompt-gamma lines remains strongly correlated with the Bragg peak, so that the simulated yield profiles retain their value as a range-verification proxy irrespective of the underlying cross-section discrepancy.
 
-No comparison is presented for the 6.13~MeV $^{16}$O$_{6.13\to\mathrm{g.s.}}$ line. Kelleter~et~al.\ explicitly refrained from comparing their data with Geant4 results for this transition, noting that Geant4 has a reported problem with reproducing the corresponding cross sections~\cite{kelleter2017}. Since our simulation relies on the same Geant4 physics, the 6.13~MeV depth profile is expected to be unreliable in absolute yield and shape, and no such comparison is attempted here. The 6.13~MeV profile is presented in Section~3 as a simulation-only result.
+No comparison is presented for the 6.13~MeV $^{16}$O$_{6.13\to\mathrm{g.s.}}$ line. Kelleter~et~al.\ explicitly refrained from comparing their data with Geant4 results for this transition, noting that Geant4 has a reported problem with reproducing the corresponding cross sections~\cite{kelleter2017}. Since our simulation relies on the same Geant4 physics, the 6.13~MeV depth profile is expected to be unreliable in absolute yield and shape, and it is therefore omitted from this article.
 
 The 9.6~MeV $^{16}$O line is present in the Geant4 output but was not measured in the Cracow experiment~\cite{kelleter2017} and has no experimental counterpart. It is therefore shown only as a Geant4 prediction.
 
@@ -170,15 +163,6 @@ The 9.6~MeV $^{16}$O line is present in the Geant4 output but was not measured i
     \subfloat[Experiment, from \cite{kelleter2017}]{\includegraphics[width=0.48\linewidth]{images/figure3_1.png}}
     \caption{Prompt-gamma depth profiles at 90$^\circ$ detection angle for the $^{12}$C$_{4.44\to\mathrm{g.s.}}$ line. \textit{Left}: Geant4 simulation (this work) for PMMA at 130.87~MeV; the yield $Y = N_\gamma/(FOV\cdot\Delta\Omega_\mathrm{sim})$ per proton is plotted vs.\ normalised depth $z/d_\mathrm{BP}$. The 4.44~MeV line is shown in blue, the 9.6~MeV line in green. \textit{Right}: experimental measurement from Kelleter~et~al.~\cite{kelleter2017} for PMMA at 130.87~MeV; the vertical red line marks the theoretical proton range. Both panels show a clear distal fall-off correlated with the Bragg peak position.}
     \label{fig:comp_44}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \subfloat[Geant4 (this work)]{\includegraphics[width=0.48\linewidth]{images/c_6p13MeV_90deg.png}}
-    \hfill
-    \subfloat[Experiment, from \cite{kelleter2017}]{\includegraphics[width=0.48\linewidth]{images/figure3_2.png}}
-    \caption{Prompt-gamma depth profiles for the $^{16}$O$_{6.13\to\mathrm{g.s.}}$ line at 90$^\circ$. \textit{Left}: Geant4 simulation (this work). \textit{Right}: experimental measurement from Kelleter~et~al.~\cite{kelleter2017}. A quantitative comparison is not made because Geant4 is known to inadequately reproduce the cross sections for this transition.}
-    \label{fig:comp_613}
 \end{figure}
 
 \section*{Acknowledgments}
