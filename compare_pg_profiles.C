@@ -17,9 +17,9 @@
 ///
 /// Only subdirectories whose name contains `energyTag` (e.g. "130MeV") are
 /// used. For each of the 90/120 deg detector angles, the 4.4 MeV and 9.6 MeV
-/// comparisons are drawn side by side as two pads of one canvas (one PDF per
+/// comparisons are drawn side by side as two pads of one canvas (one JPG per
 /// angle), with a legend (labelled by subdirectory name, common prefix
-/// stripped). Output (canvases as PDF + one ROOT file with all
+/// stripped). Output (canvases as JPG + one ROOT file with all
 /// canvases/graphs), named after `energyTag`, is written to `motherDir`.
 ///
 /// Usage:
@@ -270,9 +270,9 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
         }
 
         c->cd();
-        std::string pdfPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
-                              Form("_%ddeg", angle) + ".pdf";
-        c->SaveAs(pdfPath.c_str());
+        std::string jpgPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
+                              Form("_%ddeg", angle) + ".jpg";
+        c->SaveAs(jpgPath.c_str());
         c->Write();
     }
 
