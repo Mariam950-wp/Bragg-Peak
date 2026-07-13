@@ -1,7 +1,11 @@
+% !TeX program = lualatex
 \documentclass[a4paper]{article}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}%\usepackage[latin1]{inputenc}
-\DeclareUnicodeCharacter{0301}{\'{e}}
+\usepackage{iftex}
+\ifPDFTeX
+  \DeclareUnicodeCharacter{0301}{\'{e}}
+\fi
 \usepackage[english]{babel}
 \usepackage{graphicx}
 \usepackage{subfig}
