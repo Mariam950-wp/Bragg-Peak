@@ -12,15 +12,16 @@
 ///     ...
 ///
 /// Each PG_analysis.root must contain (as produced by analyze_pg_spectrum.C):
-///   graphs/4p4MeV/4p4MeV_Gamma_90deg
-///   graphs/6p13MeV/6p13MeV_Gamma_90deg
-///   graphs/9p6MeV/9p6MeV_Gamma_90deg
+///   graphs/4p4MeV/4p4MeV_Gamma_90deg   graphs/4p4MeV/4p4MeV_Gamma_120deg
+///   graphs/6p13MeV/6p13MeV_Gamma_90deg graphs/6p13MeV/6p13MeV_Gamma_120deg
+///   graphs/9p6MeV/9p6MeV_Gamma_90deg   graphs/9p6MeV/9p6MeV_Gamma_120deg
 ///
 /// Only subdirectories whose name contains `energyTag` (e.g. "130MeV") are
-/// used. For each gamma line, the matching subdirectories' graphs are drawn
-/// on one canvas with a legend (labelled by subdirectory name, common prefix
-/// stripped). Output (canvases as PNG + one ROOT file with all
-/// canvases/graphs), named after `energyTag`, is written to `motherDir`.
+/// used. For each gamma line and each of the 90/120 deg detector angles,
+/// the matching subdirectories' graphs are drawn on one canvas with a
+/// legend (labelled by subdirectory name, common prefix stripped). Output
+/// (canvases as PNG + one ROOT file with all canvases/graphs), named after
+/// `energyTag`, is written to `motherDir`.
 ///
 /// Usage:
 ///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV")'
@@ -52,6 +53,9 @@ static const LineCfg kLines[] = {
     { "9p6MeV",  "9.6 MeV",  "9p6MeV"  },
 };
 static const Int_t kNLines = sizeof(kLines) / sizeof(kLines[0]);
+
+static const Int_t kAngles[] = { 90, 120 };
+static const Int_t kNAngles = sizeof(kAngles) / sizeof(kAngles[0]);
 
 static const Int_t kColors[] = {
     kBlue + 1, kRed + 1, kGreen + 2, kMagenta + 1,
@@ -140,14 +144,15 @@ void StripCommonPrefix(std::vector<RunEntry>& runs)
 // ================================================================
 //  4. DrawOverlayCanvas
 //     Build one canvas overlaying `graphs` (already loaded/cloned) with
-//     a legend, for a given gamma line.
+//     a legend, for a given gamma line and detector angle.
 // ================================================================
 TCanvas* DrawOverlayCanvas(const LineCfg& cfg,
+                            Int_t angle,
                             const std::vector<TGraph*>& graphs,
                             const std::vector<std::string>& labels)
 {
-    TCanvas* c = new TCanvas(Form("c_compare_%s", cfg.fileTag),
-                              Form("%s comparison", cfg.label), 900, 650);
+    TCanvas* c = new TCanvas(Form("c_compare_%s_%ddeg", cfg.fileTag, angle),
+                              Form("%s comparison – %d deg", cfg.label, angle), 900, 650);
     c->SetLeftMargin(0.13);
     c->SetBottomMargin(0.13);
 
@@ -185,7 +190,7 @@ TCanvas* DrawOverlayCanvas(const LineCfg& cfg,
     TLatex lat;
     lat.SetNDC();
     lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – %s – 90#circ detector", cfg.label));
+    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – %s – %d#circ detector", cfg.label, angle));
 
     return c;
 }
@@ -219,47 +224,52 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
 
     for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
         const LineCfg& cfg = kLines[iLine];
-        std::vector<TGraph*> graphs;
-        std::vector<std::string> labels;
+        TDirectory* dLine = dGraphs->mkdir(cfg.dirTag);
 
-        for (const auto& run : runs) {
-            TFile* f = TFile::Open(run.path.c_str(), "READ");
-            if (!f || f->IsZombie()) {
-                ::Warning("compare_pg_profiles", "Cannot open %s", run.path.c_str());
-                continue;
-            }
-            std::string gname = std::string("graphs/") + cfg.dirTag + "/" +
-                                 cfg.dirTag + "_Gamma_90deg";
-            TGraph* g = (TGraph*)f->Get(gname.c_str());
-            if (!g) {
-                ::Warning("compare_pg_profiles", "Missing %s in %s",
-                          gname.c_str(), run.path.c_str());
+        for (Int_t iAngle = 0; iAngle < kNAngles; ++iAngle) {
+            Int_t angle = kAngles[iAngle];
+            std::vector<TGraph*> graphs;
+            std::vector<std::string> labels;
+
+            for (const auto& run : runs) {
+                TFile* f = TFile::Open(run.path.c_str(), "READ");
+                if (!f || f->IsZombie()) {
+                    ::Warning("compare_pg_profiles", "Cannot open %s", run.path.c_str());
+                    continue;
+                }
+                std::string gname = std::string("graphs/") + cfg.dirTag + "/" +
+                                     cfg.dirTag + Form("_Gamma_%ddeg", angle);
+                TGraph* g = (TGraph*)f->Get(gname.c_str());
+                if (!g) {
+                    ::Warning("compare_pg_profiles", "Missing %s in %s",
+                              gname.c_str(), run.path.c_str());
+                    f->Close();
+                    delete f;
+                    continue;
+                }
+                graphs.push_back((TGraph*)g->Clone());
+                labels.push_back(run.label);
                 f->Close();
                 delete f;
-                continue;
             }
-            graphs.push_back((TGraph*)g->Clone());
-            labels.push_back(run.label);
-            f->Close();
-            delete f;
+            if (graphs.empty()) continue;
+
+            TCanvas* c = DrawOverlayCanvas(cfg, angle, graphs, labels);
+
+            std::string pngPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
+                                  "_" + cfg.fileTag + Form("_%ddeg", angle) + ".png";
+            c->SaveAs(pngPath.c_str());
+
+            c->Write();
+
+            TDirectory* dAngle = dLine->mkdir(Form("%ddeg", angle));
+            dAngle->cd();
+            for (std::size_t i = 0; i < graphs.size(); ++i) {
+                graphs[i]->SetName(Form("%s_%s", cfg.dirTag, labels[i].c_str()));
+                graphs[i]->Write();
+            }
+            fOut->cd();
         }
-        if (graphs.empty()) continue;
-
-        TCanvas* c = DrawOverlayCanvas(cfg, graphs, labels);
-
-        std::string pngPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
-                              "_" + cfg.fileTag + ".png";
-        c->SaveAs(pngPath.c_str());
-
-        c->Write();
-
-        TDirectory* dLine = dGraphs->mkdir(cfg.dirTag);
-        dLine->cd();
-        for (std::size_t i = 0; i < graphs.size(); ++i) {
-            graphs[i]->SetName(Form("%s_%s", cfg.dirTag, labels[i].c_str()));
-            graphs[i]->Write();
-        }
-        fOut->cd();
     }
 
     fOut->Write("", TObject::kOverwrite);
