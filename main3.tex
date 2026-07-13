@@ -106,7 +106,7 @@ The 4.44~MeV ($^{12}$C) and 9.6~MeV ($^{16}$O) yield profiles are presented toge
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.75\linewidth]{images/c_44_96_90deg.png}
+    \includegraphics[width=0.75\linewidth]{images/c_44_96_90deg.pdf}
     \caption{Geant4 prompt-gamma yield profiles for the 4.44~MeV ($^{12}$C, blue) and 9.6~MeV ($^{16}$O, green) lines at 90$^\circ$ detection angle as a function of normalised depth $z/d_\mathrm{BP}$. The yield is expressed per primary proton, per mm of target thickness, and per sr of solid angle. The 9.6~MeV profile has no experimental counterpart in the Cracow dataset.}
     \label{fig:44_96}
 \end{figure}
@@ -119,14 +119,14 @@ The rising portion of the profile upstream of the Bragg peak shows visible physi
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.95\linewidth]{images/PG_comparison_130MeV_90deg.pdf}
+    \includegraphics[width=0.95\linewidth]{images/c_44_96_90deg.pdf}
     \caption{Comparison of the simulated 4.44~MeV ($^{12}$C, left) and 9.6~MeV ($^{16}$O, right) prompt-gamma yield profiles at 90$^\circ$ detection angle, obtained with the \texttt{QGSP\_BIC\_HP\_EMZ}, \texttt{QBBC}, and \texttt{FTFP\_BERT\_HP} physics lists (Section~\ref{sec:physlists}). Depth is normalised to the Bragg peak position, $z/d_\mathrm{BP}$.}
     \label{fig:physlist_90}
 \end{figure}
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.95\linewidth]{images/PG_comparison_130MeV_120deg.pdf}
+    \includegraphics[width=0.95\linewidth]{images/c_44_96_120deg.pdf}
     \caption{Same as Figure~\ref{fig:physlist_90}, for the 120$^\circ$ detection angle.}
     \label{fig:physlist_120}
 \end{figure}
@@ -155,15 +155,6 @@ It is important to note that Geant4 does not properly resolve the fine structure
 No comparison is presented for the 6.13~MeV $^{16}$O$_{6.13\to\mathrm{g.s.}}$ line. Kelleter~et~al.\ explicitly refrained from comparing their data with Geant4 results for this transition, noting that Geant4 has a reported problem with reproducing the corresponding cross sections~\cite{kelleter2017}. Since our simulation relies on the same Geant4 physics, the 6.13~MeV depth profile is expected to be unreliable in absolute yield and shape, and it is therefore omitted from this article.
 
 The 9.6~MeV $^{16}$O line is present in the Geant4 output but was not measured in the Cracow experiment~\cite{kelleter2017} and has no experimental counterpart. It is therefore shown only as a Geant4 prediction.
-
-\begin{figure}[h]
-    \centering
-    \subfloat[Geant4 (this work)]{\includegraphics[width=0.48\linewidth]{images/c_44_96_90deg.png}}
-    \hfill
-    \subfloat[Experiment, from \cite{kelleter2017}]{\includegraphics[width=0.48\linewidth]{images/figure3_1.png}}
-    \caption{Prompt-gamma depth profiles at 90$^\circ$ detection angle for the $^{12}$C$_{4.44\to\mathrm{g.s.}}$ line. \textit{Left}: Geant4 simulation (this work) for PMMA at 130.87~MeV; the yield $Y = N_\gamma/(FOV\cdot\Delta\Omega_\mathrm{sim})$ per proton is plotted vs.\ normalised depth $z/d_\mathrm{BP}$. The 4.44~MeV line is shown in blue, the 9.6~MeV line in green. \textit{Right}: experimental measurement from Kelleter~et~al.~\cite{kelleter2017} for PMMA at 130.87~MeV; the vertical red line marks the theoretical proton range. Both panels show a clear distal fall-off correlated with the Bragg peak position.}
-    \label{fig:comp_44}
-\end{figure}
 
 \section*{Acknowledgments}
 
