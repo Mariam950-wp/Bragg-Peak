@@ -8,9 +8,6 @@
 ///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg
 ///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg
 ///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg
-///   canvases/              – one canvas for 4.4 MeV
-///                            + one canvas for 9.6 MeV
-///                            + one dedicated canvas for the 6.13 MeV line
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -20,11 +17,6 @@
 #include "TFile.h"
 #include "TH1D.h"
 #include "TGraph.h"
-#include "TCanvas.h"
-#include "TLegend.h"
-#include "TStyle.h"
-#include "TPad.h"
-#include "TLatex.h"
 #include "TSystem.h"
 #include "TMath.h"
 
@@ -60,20 +52,7 @@ struct FileEntry {
 };
 
 // ================================================================
-//  1. ApplyGlobalStyle
-// ================================================================
-void ApplyGlobalStyle()
-{
-    gStyle->SetOptStat(0);
-    gStyle->SetOptTitle(0);
-    gStyle->SetPadGridX(kTRUE);
-    gStyle->SetPadGridY(kTRUE);
-    gStyle->SetGridStyle(3);
-    gStyle->SetGridColor(kGray);
-}
-
-// ================================================================
-//  2. CollectInputFiles
+//  1. CollectInputFiles
 // ================================================================
 Double_t DepthFromFilename(const std::string& path)
 {
@@ -110,7 +89,7 @@ std::vector<FileEntry> CollectInputFiles(const char* dataDir)
 }
 
 // ================================================================
-//  3. FillGammaLineGraphs
+//  2. FillGammaLineGraphs
 // ================================================================
 void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           TGraph* graphs[],
@@ -155,140 +134,9 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
 }
 
 // ================================================================
-//  3b. GraphYMax
+//  3. WriteResultsToFile
 // ================================================================
-Double_t GraphYMax(TGraph* g)
-{
-    Double_t yMax = -1e300;
-    for (Int_t i = 0; i < g->GetN(); ++i)
-        if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
-    return yMax;
-}
-
-// ================================================================
-//  4. Draw44Canvas
-//     Plot the 4.4 MeV normalised prompt-gamma line at 90 degrees vs depth.
-// ================================================================
-TCanvas* Draw44Canvas(TGraph* g44, Int_t angle)
-{
-    TCanvas* c = new TCanvas(Form("c_44MeV_%ddeg", angle),
-                             Form("4.4 MeV – %d deg", angle), 800, 600);
-    c->SetLeftMargin(0.13);
-    c->SetBottomMargin(0.13);
-
-    g44->SetLineColor(kBlue + 1);
-    g44->SetMarkerColor(kBlue + 1);
-    g44->SetMarkerStyle(20);
-    g44->SetMarkerSize(0.9);
-    g44->SetLineWidth(2);
-
-    Double_t yMax44 = GraphYMax(g44);
-    g44->Draw("APL");
-    g44->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g44->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
-    g44->GetXaxis()->SetTitleSize(0.05);
-    g44->GetYaxis()->SetTitleSize(0.05);
-    g44->GetYaxis()->SetRangeUser(0., yMax44 * 1.1);
-
-    gPad->RedrawAxis();
-
-    TLegend* leg = new TLegend(0.55, 0.78, 0.88, 0.88);
-    leg->SetBorderSize(0);
-    leg->AddEntry(g44, "4.4 MeV", "lp");
-    leg->Draw();
-
-    TLatex lat;
-    lat.SetNDC();
-    lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – 4.4 MeV – %d#circ detector", angle));
-
-    return c;
-}
-
-// ================================================================
-//  5. Draw96Canvas
-//     Plot the 9.6 MeV normalised prompt-gamma line at 90 degrees vs depth.
-// ================================================================
-TCanvas* Draw96Canvas(TGraph* g96, Int_t angle)
-{
-    TCanvas* c = new TCanvas(Form("c_96MeV_%ddeg", angle),
-                             Form("9.6 MeV – %d deg", angle), 800, 600);
-    c->SetLeftMargin(0.13);
-    c->SetBottomMargin(0.13);
-
-    g96->SetLineColor(kGreen + 2);
-    g96->SetMarkerColor(kGreen + 2);
-    g96->SetMarkerStyle(22);
-    g96->SetMarkerSize(0.9);
-    g96->SetLineWidth(2);
-
-    Double_t yMax96 = GraphYMax(g96);
-    g96->Draw("APL");
-    g96->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g96->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
-    g96->GetXaxis()->SetTitleSize(0.05);
-    g96->GetYaxis()->SetTitleSize(0.05);
-    g96->GetYaxis()->SetRangeUser(0., yMax96 * 1.1);
-
-    gPad->RedrawAxis();
-
-    TLegend* leg = new TLegend(0.55, 0.78, 0.88, 0.88);
-    leg->SetBorderSize(0);
-    leg->AddEntry(g96, "9.6 MeV", "lp");
-    leg->Draw();
-
-    TLatex lat;
-    lat.SetNDC();
-    lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – 9.6 MeV – %d#circ detector", angle));
-
-    return c;
-}
-
-// ================================================================
-//  6. Draw6p13Canvas
-// ================================================================
-TCanvas* Draw6p13Canvas(TGraph* g613[], Int_t angle)
-{
-    TCanvas* c = new TCanvas(Form("c_6p13MeV_%ddeg", angle),
-                             Form("6.13 MeV – %d deg", angle), 900, 650);
-    c->SetLeftMargin(0.13);
-    c->SetBottomMargin(0.13);
-
-    g613[0]->SetLineColor(kRed + 1);
-    g613[0]->SetMarkerColor(kRed + 1);
-    g613[0]->SetMarkerStyle(21);
-    g613[0]->SetMarkerSize(0.9);
-    g613[0]->SetLineWidth(2);
-    Double_t yMax613 = GraphYMax(g613[0]);
-    g613[0]->Draw("APL");
-    g613[0]->GetXaxis()->SetTitle("Depth / d_{BP}");
-    g613[0]->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
-    g613[0]->GetXaxis()->SetTitleSize(0.05);
-    g613[0]->GetYaxis()->SetTitleSize(0.05);
-    g613[0]->GetYaxis()->SetRangeUser(0., yMax613 * 1.1);
-
-    gPad->RedrawAxis();
-
-    TLegend* leg = new TLegend(0.65, 0.78, 0.92, 0.92);
-    leg->SetBorderSize(0);
-    leg->AddEntry(g613[0], "6.13 MeV", "lp");
-    leg->Draw();
-
-    TLatex lat;
-    lat.SetNDC();
-    lat.SetTextSize(0.04);
-    lat.DrawLatex(0.14, 0.92, Form("Prompt gammas – 6.13 MeV – %d#circ detector", angle));
-
-    return c;
-}
-
-// ================================================================
-//  7. WriteResultsToFile
-// ================================================================
-void WriteResultsToFile(TFile* fOut,
-                         TGraph* g44[], TGraph* g613[], TGraph* g96[],
-                         TCanvas* c44, TCanvas* c96, TCanvas* c6p13)
+void WriteResultsToFile(TFile* fOut, TGraph* g44[], TGraph* g613[], TGraph* g96[])
 {
     TDirectory* dGraphs = fOut->mkdir("graphs");
 
@@ -304,17 +152,10 @@ void WriteResultsToFile(TFile* fOut,
     d96->cd();
     for (Int_t j = 0; j < kNAngles; ++j) g96[j]->Write();
 
-    TDirectory* dCanv = fOut->mkdir("canvases");
-    dCanv->cd();
-    c44->Write();
-    c96->Write();
-    c6p13->Write();
-
     Printf("Output structure (90 deg only):");
     Printf("  graphs/4p4MeV/        – 1 TGraph (90 deg)");
     Printf("  graphs/6p13MeV/       – 1 TGraph (90 deg)");
     Printf("  graphs/9p6MeV/        – 1 TGraph (90 deg)");
-    Printf("  canvases/             – 4.4 MeV canvas + 9.6 MeV canvas + 6.13 MeV canvas");
 }
 
 // ================================================================
@@ -323,8 +164,6 @@ void WriteResultsToFile(TFile* fOut,
 void analyze_pg_spectrum(const char* dataDir = "./",
                           const char* outFile = "PG_analysis.root")
 {
-    ApplyGlobalStyle();
-
     std::vector<FileEntry> files = CollectInputFiles(dataDir);
     if (files.empty()) return;
 
@@ -343,17 +182,12 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3, kEff613);
     FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0, kEff96);
 
-    // separate canvas for each gamma line
-    TCanvas* c44   = Draw44Canvas(g44[0], kSpecificAngles[0]);
-    TCanvas* c96   = Draw96Canvas(g96[0], kSpecificAngles[0]);
-    TCanvas* c6p13 = Draw6p13Canvas(g613, kSpecificAngles[0]);
-
     TFile* fOut = TFile::Open(outFile, "RECREATE");
     if (!fOut || fOut->IsZombie()) {
         ::Error("analyze_pg_spectrum", "Cannot create: %s", outFile);
         return;
     }
-    WriteResultsToFile(fOut, g44, g613, g96, c44, c96, c6p13);
+    WriteResultsToFile(fOut, g44, g613, g96);
     fOut->Write("", TObject::kOverwrite);
     fOut->Close();
 
