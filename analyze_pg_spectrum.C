@@ -1,13 +1,13 @@
 /// \file analyze_pg_spectrum.C
-/// \brief ROOT macro: prompt-gamma intensity vs proton range (depth) at 90 degrees.
+/// \brief ROOT macro: prompt-gamma intensity vs proton range (depth) at 90 and 120 degrees.
 ///
 /// Reads every PG_Spectrum_VS_Angle_<depth>.root file in `dataDir`,
-/// integrates the 90-degree detector histogram for each gamma line,
+/// integrates the 90 and 120-degree detector histograms for each gamma line,
 /// and writes results to one output file:
 ///
-///   graphs/4p4MeV/         – TGraph for the 4.4 MeV line at 90 deg
-///   graphs/6p13MeV/        – TGraph for the 6.13 MeV line at 90 deg
-///   graphs/9p6MeV/         – TGraph for the 9.6 MeV line at 90 deg
+///   graphs/4p4MeV/         – TGraph per angle for the 4.4 MeV line
+///   graphs/6p13MeV/        – TGraph per angle for the 6.13 MeV line
+///   graphs/9p6MeV/         – TGraph per angle for the 9.6 MeV line
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
@@ -31,13 +31,13 @@
 
 // Bragg peak position for 130 MeV protons in PMMA (mm)
 static const Double_t kBraggPeakMm  = 107.0;
-static const Int_t    kNAngles       = 1;
-static const Int_t    kSpecificAngles[kNAngles] = {90};
+static const Int_t    kNAngles       = 2;
+static const Int_t    kSpecificAngles[kNAngles] = {90, 120};
 
-// Detector geometry at 90 degrees
+// Detector geometry (same FOV/solid angle used for all detector angles)
 static const Double_t kFOV        = 2.0;
 static const Double_t kDeltaTheta = 0.018865;
-static const Double_t kDeltaOmega = 2.0 * TMath::Pi() * kDeltaTheta; // sin(90)=1
+static const Double_t kDeltaOmega = 2.0 * TMath::Pi() * kDeltaTheta; // assumes sin(theta)=1, exact at 90 deg only
 
 // HPGe detector efficiency from Kelleter et al. 2017 (Monte-Carlo determined).
 static const Double_t kEff44  = 0.039;
@@ -152,10 +152,10 @@ void WriteResultsToFile(TFile* fOut, TGraph* g44[], TGraph* g613[], TGraph* g96[
     d96->cd();
     for (Int_t j = 0; j < kNAngles; ++j) g96[j]->Write();
 
-    Printf("Output structure (90 deg only):");
-    Printf("  graphs/4p4MeV/        – 1 TGraph (90 deg)");
-    Printf("  graphs/6p13MeV/       – 1 TGraph (90 deg)");
-    Printf("  graphs/9p6MeV/        – 1 TGraph (90 deg)");
+    Printf("Output structure:");
+    Printf("  graphs/4p4MeV/        – %d TGraph(s) (90, 120 deg)", kNAngles);
+    Printf("  graphs/6p13MeV/       – %d TGraph(s) (90, 120 deg)", kNAngles);
+    Printf("  graphs/9p6MeV/        – %d TGraph(s) (90, 120 deg)", kNAngles);
 }
 
 // ================================================================
