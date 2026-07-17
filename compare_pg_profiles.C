@@ -24,13 +24,14 @@
 ///   graphs/9p6MeV/9p6MeV_Gamma_90deg   graphs/9p6MeV/9p6MeV_Gamma_120deg
 ///
 /// Only subdirectories whose name contains `energyTag` (e.g. "130MeV") are
-/// used. For each of the 90/120 deg detector angles, the 4.4 MeV and 9.6 MeV
-/// comparisons are drawn side by side as two pads of one canvas (one JPG per
-/// angle); every matching physics-list run is overlaid on both pads with a
-/// legend (labelled by subdirectory name, common prefix stripped) that
-/// resizes its layout as the run count grows. Output (canvases as JPG + one
-/// ROOT file with all canvases/graphs), named after `energyTag`, is written
-/// to `motherDir`.
+/// used. Each gamma line (4.4 MeV, 9.6 MeV) x detector angle (90, 120 deg)
+/// combination gets its own canvas, saved as its own separate PNG (four
+/// PNGs total: 4.4MeV_90deg, 4.4MeV_120deg, 9.6MeV_90deg, 9.6MeV_120deg);
+/// every matching physics-list run is overlaid on that canvas with a legend
+/// (labelled by subdirectory name, common prefix stripped) that resizes its
+/// layout as the run count grows. Output (canvases as PNG + one ROOT file
+/// with all canvases/graphs), named after `energyTag`, is written to
+/// `motherDir`.
 ///
 /// Usage:
 ///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV")'
@@ -253,10 +254,6 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
     for (Int_t iAngle = 0; iAngle < kNAngles; ++iAngle) {
         Int_t angle = kAngles[iAngle];
 
-        TCanvas* c = new TCanvas(Form("c_compare_%ddeg", angle),
-                                  Form("PG comparison – %d deg", angle), 1400, 650);
-        c->Divide(kNLines, 1);
-
         for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
             const LineCfg& cfg = kLines[iLine];
             std::vector<TGraph*> graphs;
@@ -283,9 +280,12 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
                 f->Close();
                 delete f;
             }
-
-            c->cd(iLine + 1);
             if (graphs.empty()) continue;
+
+            TCanvas* c = new TCanvas(Form("c_compare_%s_%ddeg", cfg.fileTag, angle),
+                                      Form("PG comparison – %s – %d deg", cfg.label, angle),
+                                      900, 650);
+            c->cd();
             DrawOverlayPad(cfg, angle, graphs, labels);
 
             TDirectory* dAngle = dLines[iLine]->mkdir(Form("%ddeg", angle));
@@ -295,13 +295,13 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
                 graphs[i]->Write();
             }
             fOut->cd();
-        }
 
-        c->cd();
-        std::string jpgPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
-                              Form("_%ddeg", angle) + ".jpg";
-        c->SaveAs(jpgPath.c_str());
-        c->Write();
+            c->cd();
+            std::string pngPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
+                                  "_" + cfg.fileTag + Form("_%ddeg", angle) + ".png";
+            c->SaveAs(pngPath.c_str());
+            c->Write();
+        }
     }
 
     fOut->Write("", TObject::kOverwrite);
