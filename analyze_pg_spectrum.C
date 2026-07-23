@@ -10,7 +10,7 @@
 ///   graphs/9p6MeV/         – TGraph per angle for the 9.6 MeV line
 ///
 /// Each graph's x-axis is z - d_{BP} (mm), so the Bragg peak sits at 0:
-/// 107.4 mm is subtracted for 130 MeV, 36.4 mm for 70 MeV. d_{BP} is picked
+/// 103.4 mm is subtracted for 130 MeV, 32.4 mm for 70 MeV. d_{BP} is picked
 /// from the "130MeV"/"70MeV" tag in `dataDir`; if neither tag is present
 /// the macro refuses to run (rather than subtract the wrong value), and you
 /// must pass braggPeakMm explicitly (which also overrides the tag).
@@ -19,8 +19,8 @@
 ///   root -l 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
 /// Usage (batch):
 ///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
-/// Untagged directory — give d_{BP} explicitly (36.4 mm here for 70 MeV):
-///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_FTFP_BERT_HP", "PG_analysis.root", 36.4)'
+/// Untagged directory — give d_{BP} explicitly (32.4 mm here for 70 MeV):
+///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_FTFP_BERT_HP", "PG_analysis.root", 32.4)'
 
 #include "TFile.h"
 #include "TH1D.h"
@@ -40,8 +40,8 @@
 // Bragg peak depth in PMMA (mm), per beam energy used in this study.
 // Looked up from `dataDir`'s name (see BraggPeakDepthMm), or overridden
 // explicitly via the braggPeakMm argument.
-static const Double_t kDbpMm130 = 107.4; // 130.87 MeV protons
-static const Double_t kDbpMm70  = 36.4;  // 70.54 MeV protons
+static const Double_t kDbpMm130 = 103.4; // 130.87 MeV protons
+static const Double_t kDbpMm70  = 32.4;  // 70.54 MeV protons
 static const Int_t    kNAngles       = 2;
 static const Int_t    kSpecificAngles[kNAngles] = {90, 120};
 
@@ -197,14 +197,14 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     // Determine the Bragg peak depth to subtract: explicit argument wins,
     // otherwise infer from the "130MeV"/"70MeV" tag in dataDir. Refuse to
     // run if neither is available rather than silently subtracting the wrong
-    // value (e.g. 107.4 mm from a 70 MeV run, whose peak would then land
+    // value (e.g. 103.4 mm from a 70 MeV run, whose peak would then land
     // near z - d_BP = -71 mm instead of 0).
     Double_t dBP = (braggPeakMm > 0.) ? braggPeakMm : BraggPeakDepthMm(dataDir);
     if (dBP <= 0.) {
         ::Error("analyze_pg_spectrum",
                 "Cannot determine d_BP: \"%s\" contains neither \"130MeV\" nor "
                 "\"70MeV\". Pass it explicitly, e.g. "
-                "analyze_pg_spectrum(\"%s\", \"%s\", 36.4) for 70 MeV or 107.4 for 130 MeV.",
+                "analyze_pg_spectrum(\"%s\", \"%s\", 32.4) for 70 MeV or 103.4 for 130 MeV.",
                 dataDir, dataDir, outFile);
         return;
     }
