@@ -1,29 +1,34 @@
 /// \file compare_pg_profiles.C
 /// \brief ROOT macro: overlay prompt-gamma depth profiles from several
 /// PG_analysis.root files (one per subdirectory of a "mother" directory,
-/// e.g. one per physics list) on shared canvases.
+/// e.g. one per physics list and/or beam energy) on shared canvases.
 ///
 /// Expected layout (subdirectories for several beam energies can coexist
-/// in the same motherDir; `energyTag` selects which ones to compare):
+/// in the same motherDir; `energyTags` selects which ones to compare):
 ///   motherDir/
 ///     prompt_gamma_spectra_130MeV_QGSP_BIC_HP_EMZ/PG_analysis.root
 ///     prompt_gamma_spectra_130MeV_QBBC/PG_analysis.root
-///     prompt_gamma_spectra_100MeV_QGSP_BIC_HP_EMZ/PG_analysis.root
+///     prompt_gamma_spectra_70MeV_QGSP_BIC_HP_EMZ/PG_analysis.root
 ///     ...
 ///
 /// Each PG_analysis.root must contain (as produced by analyze_pg_spectrum.C):
 ///   graphs/4p4MeV/4p4MeV_Gamma_90deg   graphs/4p4MeV/4p4MeV_Gamma_120deg
 ///   graphs/9p6MeV/9p6MeV_Gamma_90deg   graphs/9p6MeV/9p6MeV_Gamma_120deg
 ///
-/// Only subdirectories whose name contains `energyTag` (e.g. "130MeV") are
-/// used. For each of the 90/120 deg detector angles, the 4.4 MeV and 9.6 MeV
-/// comparisons are drawn side by side as two pads of one canvas (one JPG per
-/// angle), with a legend (labelled by subdirectory name, common prefix
-/// stripped). Output (canvases as JPG + one ROOT file with all
-/// canvases/graphs), named after `energyTag`, is written to `motherDir`.
+/// `energyTags` is a comma-separated list (e.g. "130MeV,70MeV"); every
+/// subdirectory whose name contains ANY of the listed tags is included, so
+/// runs from different beam energies land in the same legend/picture (the
+/// x-axis, z - d_{BP}, already lines their Bragg peaks up at 0). Pass a
+/// single tag (e.g. "130MeV") to compare only that energy across physics
+/// lists, as before. For each of the 90/120 deg detector angles, the
+/// 4.4 MeV and 9.6 MeV comparisons are drawn side by side as two pads of
+/// one canvas (one JPG per angle), with a legend (labelled by subdirectory
+/// name, common prefix stripped). Output (canvases as JPG + one ROOT file
+/// with all canvases/graphs), named after `energyTags`, is written to
+/// `motherDir`.
 ///
 /// Usage:
-///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV")'
+///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV,70MeV")'
 
 #include "TFile.h"
 #include "TGraph.h"
@@ -82,11 +87,25 @@ void ApplyGlobalStyle()
 
 // ================================================================
 //  2. CollectRunDirs
-//     Every immediate subdirectory of motherDir whose name contains
-//     `energyTag` and that holds a PG_analysis.root becomes one overlay
-//     entry. Pass an empty energyTag to match every subdirectory.
+//     Every immediate subdirectory of motherDir whose name contains ANY
+//     of `energyTags` and that holds a PG_analysis.root becomes one
+//     overlay entry. Pass an empty energyTags to match every subdirectory.
 // ================================================================
-std::vector<RunEntry> CollectRunDirs(const char* motherDir, const char* energyTag)
+std::vector<std::string> SplitTags(const std::string& tagList)
+{
+    std::vector<std::string> tags;
+    std::size_t start = 0;
+    while (start <= tagList.size()) {
+        std::size_t comma = tagList.find(',', start);
+        std::string tag = tagList.substr(start, comma - start);
+        if (!tag.empty()) tags.push_back(tag);
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return tags;
+}
+
+std::vector<RunEntry> CollectRunDirs(const char* motherDir, const std::vector<std::string>& energyTags)
 {
     std::vector<RunEntry> runs;
     void* dh = gSystem->OpenDirectory(motherDir);
@@ -98,7 +117,12 @@ std::vector<RunEntry> CollectRunDirs(const char* motherDir, const char* energyTa
     while ((entry = gSystem->GetDirEntry(dh)) != nullptr) {
         std::string name(entry);
         if (name == "." || name == "..") continue;
-        if (energyTag[0] != '\0' && name.find(energyTag) == std::string::npos) continue;
+        if (!energyTags.empty()) {
+            bool matches = false;
+            for (const auto& tag : energyTags)
+                if (name.find(tag) != std::string::npos) { matches = true; break; }
+            if (!matches) continue;
+        }
 
         std::string subDir  = std::string(motherDir) + "/" + name;
         std::string rootFile = subDir + "/PG_analysis.root";
@@ -159,10 +183,12 @@ void DrawOverlayPad(const LineCfg& cfg,
             if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
     }
 
-    TLegend* leg = new TLegend(0.60, 0.83, 0.89, 0.89);
+    Int_t nCols = (Int_t)graphs.size() > 2 ? 2 : 1;
+    Int_t nRows = ((Int_t)graphs.size() + nCols - 1) / nCols;
+    TLegend* leg = new TLegend(0.55, 0.89 - 0.05 * nRows, 0.89, 0.89);
     leg->SetTextSize(0.028);
     leg->SetBorderSize(0);
-    leg->SetNColumns((Int_t)graphs.size() > 2 ? 2 : 1);
+    leg->SetNColumns(nCols);
 
     for (std::size_t i = 0; i < graphs.size(); ++i) {
         TGraph* g = graphs[i];
@@ -195,22 +221,25 @@ void DrawOverlayPad(const LineCfg& cfg,
 // ================================================================
 //  Main entry point
 // ================================================================
-void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "130MeV")
+void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = "130MeV,70MeV")
 {
     ApplyGlobalStyle();
 
-    std::vector<RunEntry> runs = CollectRunDirs(motherDir, energyTag);
+    std::vector<std::string> tags = SplitTags(energyTags);
+    std::vector<RunEntry> runs = CollectRunDirs(motherDir, tags);
     if (runs.empty()) {
         ::Error("compare_pg_profiles", "No PG_analysis.root found under %s matching \"%s\"",
-                 motherDir, energyTag);
+                 motherDir, energyTags);
         return;
     }
     StripCommonPrefix(runs);
 
-    Printf("Found %d run(s) for %s:", (Int_t)runs.size(), energyTag);
+    Printf("Found %d run(s) for %s:", (Int_t)runs.size(), energyTags);
     for (auto& r : runs) Printf("  %-30s  ->  %s", r.label.c_str(), r.path.c_str());
 
-    std::string tagSuffix = (energyTag[0] != '\0') ? (std::string("_") + energyTag) : "";
+    std::string tagForFile = energyTags;
+    std::replace(tagForFile.begin(), tagForFile.end(), ',', '_');
+    std::string tagSuffix = !tagForFile.empty() ? (std::string("_") + tagForFile) : "";
     std::string outPath = std::string(motherDir) + "/PG_comparison" + tagSuffix + ".root";
     TFile* fOut = TFile::Open(outPath.c_str(), "RECREATE");
     if (!fOut || fOut->IsZombie()) {
