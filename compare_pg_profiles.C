@@ -225,8 +225,10 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTag = "
     for (Int_t iAngle = 0; iAngle < kNAngles; ++iAngle) {
         Int_t angle = kAngles[iAngle];
 
+        const Int_t kPadSize = 650; // square pads: kNLines of them side by side
         TCanvas* c = new TCanvas(Form("c_compare_%ddeg", angle),
-                                  Form("PG comparison – %d deg", angle), 1400, 650);
+                                  Form("PG comparison – %d deg", angle),
+                                  kNLines * kPadSize, kPadSize);
         c->Divide(kNLines, 1);
 
         for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
