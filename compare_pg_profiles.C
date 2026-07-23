@@ -25,11 +25,13 @@
 ///     "prompt_gamma_spectra_FTFP_BERT_HP"), so auto-discovery would miss
 ///     it, or to control exactly which runs appear.
 ///
-/// Every run gets its OWN distinct colour+marker so all overlaid curves are
-/// visually separable (e.g. six curves = six colours). The energyTag
-/// additionally selects the line style (1st tag solid, 2nd dashed, ...) as
-/// a beam-energy grouping cue; a run whose name carries no tag stays solid.
-/// The x-axis, z - d_{BP}, lines the Bragg peaks of both energies up at 0.
+/// Styling follows the experimental reference plots: COLOUR encodes the beam
+/// energy (130 MeV blue, 70 MeV black, in energyTags order) while MARKER
+/// shape + line style encode the physics list, so every (energy, physics
+/// list) pair is a unique combination and the two energies read at a glance.
+/// The x-axis (z - d_{BP}, "effective target thickness - proton range") is
+/// fixed to -35..10 mm with a red line at 0 marking the Bragg peak, no grid,
+/// and a centred nuclear-transition title (e.g. "^{12}C_{4.44 -> g.s.}").
 ///
 /// Each (gamma line, detector angle) combination is drawn on its own
 /// separate square picture (one JPG each), overlaying every run — e.g. the
@@ -52,6 +54,7 @@
 #include "TStyle.h"
 #include "TSystem.h"
 #include "TLatex.h"
+#include "TLine.h"
 
 #include <vector>
 #include <string>
@@ -64,36 +67,41 @@ struct LineCfg {
     const char* dirTag;    // e.g. "4p4MeV"
     const char* label;     // e.g. "4.4 MeV"
     const char* fileTag;   // output file suffix
+    const char* title;     // physics title shown centred on top of the picture
 };
 
 static const LineCfg kLines[] = {
-    { "4p4MeV", "4.4 MeV", "4p4MeV" },
-    { "9p6MeV", "9.6 MeV", "9p6MeV" },
+    { "4p4MeV", "4.4 MeV", "4p4MeV", "^{12}C_{4.44 #rightarrow g.s.}" },
+    { "9p6MeV", "9.6 MeV", "9p6MeV", "9.6 MeV prompt #gamma" },
 };
 static const Int_t kNLines = sizeof(kLines) / sizeof(kLines[0]);
 
 static const Int_t kAngles[] = { 90, 120 };
 static const Int_t kNAngles = sizeof(kAngles) / sizeof(kAngles[0]);
 
-static const Int_t kColors[] = {
-    kBlue + 1, kRed + 1, kGreen + 2, kMagenta + 1,
-    kOrange + 7, kCyan + 2, kAzure + 1, kViolet + 1
-};
-static const Int_t kMarkers[] = { 20, 21, 22, 23, 33, 34, 47, 43 };
-static const Int_t kNStyles = sizeof(kColors) / sizeof(kColors[0]);
+// x-axis window (z - d_{BP}, mm), matching the experimental reference plot.
+static const Double_t kXmin = -35.;
+static const Double_t kXmax =  10.;
 
-// Line style per energyTags entry (1=solid, 2=dashed, 3=dotted, 4=dash-dot),
-// so e.g. the 1st tag ("130MeV") is always drawn solid and the 2nd
-// ("70MeV") always dashed, regardless of colour.
-static const Int_t kLineStyles[] = { 1, 2, 3, 4 };
-static const Int_t kNLineStyles = sizeof(kLineStyles) / sizeof(kLineStyles[0]);
+// Colour encodes the beam ENERGY (experimental-reference style: 130 MeV
+// blue, 70 MeV black), assigned in the order the tags appear in energyTags.
+static const Int_t kEnergyColors[] = { kBlue, kBlack, kRed + 1, kGreen + 2 };
+static const Int_t kNEnergyColors = sizeof(kEnergyColors) / sizeof(kEnergyColors[0]);
+
+// Marker shape + line style encode the PHYSICS LIST (open markers for the
+// clean reference look); the two arrays are indexed together.
+static const Int_t kListMarkers[]    = { 24, 25, 26, 32, 27, 28, 30, 5 };
+static const Int_t kListLineStyles[] = {  1,  2,  9,  7,  3,  5,  6, 8 };
+static const Int_t kNListStyles = sizeof(kListMarkers) / sizeof(kListMarkers[0]);
 
 struct RunEntry {
     std::string label;     // legend label (subdirectory name, prefix stripped)
     std::string path;      // full path to PG_analysis.root
-    std::string energyTag; // which energyTags entry matched (selects line style)
-    Int_t       colorIdx  = 0; // index into kColors/kMarkers (distinct per run)
-    Int_t       lineStyle = 1; // solid by default; dashed etc. per energy tag
+    std::string energyTag; // which energyTags entry matched (selects colour)
+    std::string physList;  // label with energyTag removed (selects marker/line)
+    Int_t       color     = kBlack; // by beam energy
+    Int_t       marker    = 24;     // by physics list
+    Int_t       lineStyle = 1;      // by physics list
 };
 
 // ================================================================
@@ -103,10 +111,11 @@ void ApplyGlobalStyle()
 {
     gStyle->SetOptStat(0);
     gStyle->SetOptTitle(0);
-    gStyle->SetPadGridX(kTRUE);
-    gStyle->SetPadGridY(kTRUE);
-    gStyle->SetGridStyle(3);
-    gStyle->SetGridColor(kGray);
+    gStyle->SetPadGridX(kFALSE); // reference plot has no grid
+    gStyle->SetPadGridY(kFALSE);
+    gStyle->SetPadTickX(1);      // ticks on all four frame sides
+    gStyle->SetPadTickY(1);
+    gStyle->SetEndErrorSize(3);
 }
 
 // ================================================================
@@ -219,24 +228,43 @@ void StripCommonPrefix(std::vector<RunEntry>& runs)
 
 // ================================================================
 //  4. AssignPlotStyles
-//     Give every run its own distinct colour+marker (by index) so all
-//     overlaid curves stay visually separable even when many share a
-//     detector angle/gamma line. The energyTag additionally selects the
-//     line style (1st tag solid, 2nd dashed, ...) as a beam-energy cue;
-//     runs whose name carries no tag stay solid.
+//     Colour encodes the beam energy (energyTags order: 130 MeV blue,
+//     70 MeV black) so the two energies read at a glance like the
+//     experimental reference. Marker shape + line style encode the physics
+//     list (label with the energy tag removed), so e.g. QBBC at 130 and
+//     70 MeV share a marker/line but differ in colour. Every (energy,
+//     physics list) pair is therefore a unique colour+marker combination.
 // ================================================================
 void AssignPlotStyles(std::vector<RunEntry>& runs, const std::vector<std::string>& tags)
 {
-    for (std::size_t r = 0; r < runs.size(); ++r) {
-        runs[r].colorIdx = (Int_t)(r % kNStyles);
-
-        runs[r].lineStyle = 1; // solid fallback (no energy tag detected)
-        for (std::size_t i = 0; i < tags.size(); ++i) {
-            if (!runs[r].energyTag.empty() && tags[i] == runs[r].energyTag) {
-                runs[r].lineStyle = kLineStyles[i % kNLineStyles];
-                break;
-            }
+    // Derive each run's physics list and collect the distinct ones.
+    std::vector<std::string> lists;
+    for (auto& r : runs) {
+        std::string key = r.label;
+        if (!r.energyTag.empty()) {
+            std::size_t pos = key.find(r.energyTag);
+            if (pos != std::string::npos) key.erase(pos, r.energyTag.size());
         }
+        while (!key.empty() && key.front() == '_') key.erase(key.begin());
+        while (!key.empty() && key.back()  == '_') key.pop_back();
+        r.physList = key.empty() ? r.label : key;
+        if (std::find(lists.begin(), lists.end(), r.physList) == lists.end())
+            lists.push_back(r.physList);
+    }
+    std::sort(lists.begin(), lists.end());
+
+    for (auto& r : runs) {
+        // Colour by beam energy (position in energyTags; grey if untagged).
+        Int_t eIdx = -1;
+        for (std::size_t i = 0; i < tags.size(); ++i)
+            if (tags[i] == r.energyTag) { eIdx = (Int_t)i; break; }
+        r.color = (eIdx >= 0) ? kEnergyColors[eIdx % kNEnergyColors] : (kGray + 2);
+
+        // Marker + line style by physics list.
+        auto it = std::find(lists.begin(), lists.end(), r.physList);
+        Int_t lIdx = (Int_t)std::distance(lists.begin(), it);
+        r.marker    = kListMarkers[lIdx % kNListStyles];
+        r.lineStyle = kListLineStyles[lIdx % kNListStyles];
     }
 }
 
@@ -249,59 +277,78 @@ void DrawOverlayPad(const LineCfg& cfg,
                      Int_t angle,
                      const std::vector<TGraph*>& graphs,
                      const std::vector<std::string>& labels,
-                     const std::vector<Int_t>& colorIdx,
+                     const std::vector<Int_t>& colors,
+                     const std::vector<Int_t>& markers,
                      const std::vector<Int_t>& lineStyles)
 {
     gPad->SetLeftMargin(0.15);
     gPad->SetBottomMargin(0.13);
     gPad->SetTopMargin(0.10);
+    gPad->SetRightMargin(0.05);
 
+    // y-scale from the points inside the visible x-window only, so a wide
+    // energy (e.g. 130 MeV reaching far upstream) does not squash the rest.
     Double_t yMax = -1e300;
     for (TGraph* g : graphs) {
-        for (Int_t i = 0; i < g->GetN(); ++i)
+        for (Int_t i = 0; i < g->GetN(); ++i) {
+            Double_t x = g->GetX()[i];
+            if (x < kXmin || x > kXmax) continue;
             if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
+        }
     }
+    if (yMax <= 0.) yMax = 1.;
 
-    // Single column: the run labels ("130MeV_QGSP_BIC_HP_EMZ", ...) are too
-    // long to sit side by side without overlapping.
+    // Legend top-left (as in the reference); the data rises toward the peak
+    // on the right, leaving this corner free. One column, thin border. The
+    // header counts as one extra row (+1) when sizing the box.
     Int_t nEntries = (Int_t)graphs.size();
-    TLegend* leg = new TLegend(0.44, 0.88 - 0.045 * nEntries, 0.89, 0.88);
-    leg->SetTextSize(0.026);
-    leg->SetBorderSize(0);
-    leg->SetFillStyle(0); // transparent so it never masks an overlaid curve
+    TLegend* leg = new TLegend(0.18, 0.87 - 0.042 * (nEntries + 1), 0.55, 0.87);
+    leg->SetTextSize(0.024);
+    leg->SetBorderSize(1);
+    leg->SetFillColor(kWhite);
     leg->SetNColumns(1);
+    leg->SetHeader(Form("%d#circ detector", angle));
 
-    // Extra top headroom that grows with the (taller) legend, so the peaks
-    // stay clear of the entries rather than being drawn over them.
-    Double_t headroom = 1.15 + 0.09 * nEntries;
+    // Top margin above the in-window peak, generous enough that the upstream
+    // (left-hand) rise stays clear of the top-left legend box.
+    Double_t headroom = 1.35;
 
     for (std::size_t i = 0; i < graphs.size(); ++i) {
         TGraph* g = graphs[i];
-        Int_t style = colorIdx[i];
-        g->SetLineColor(kColors[style]);
-        g->SetMarkerColor(kColors[style]);
-        g->SetMarkerStyle(kMarkers[style]);
-        g->SetMarkerSize(0.9);
+        g->SetLineColor(colors[i]);
+        g->SetMarkerColor(colors[i]);
+        g->SetMarkerStyle(markers[i]);
+        g->SetMarkerSize(1.1);
         g->SetLineWidth(2);
         g->SetLineStyle(lineStyles[i]);
 
         g->Draw(i == 0 ? "APL" : "PL SAME");
         if (i == 0) {
-            g->GetXaxis()->SetTitle("z - d_{BP}  [mm]");
-            g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
-            g->GetXaxis()->SetTitleSize(0.045);
-            g->GetYaxis()->SetTitleSize(0.045);
+            g->GetXaxis()->SetTitle("effective target thickness - proton range (mm)");
+            g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
+            g->GetXaxis()->SetTitleSize(0.042);
+            g->GetYaxis()->SetTitleSize(0.042);
+            g->GetXaxis()->SetLimits(kXmin, kXmax);
             g->GetYaxis()->SetRangeUser(0., yMax * headroom);
         }
         leg->AddEntry(g, labels[i].c_str(), "lp");
     }
+
+    // Red vertical line at x = 0 marking the Bragg peak (z - d_{BP} = 0).
+    TLine* peakLine = new TLine(0., 0., 0., yMax * headroom);
+    peakLine->SetLineColor(kRed);
+    peakLine->SetLineWidth(2);
+    peakLine->Draw();
+
     leg->Draw();
     gPad->RedrawAxis();
 
+    // Physics title centred on top, e.g. "^{12}C_{4.44 -> g.s.}".
     TLatex lat;
     lat.SetNDC();
-    lat.SetTextSize(0.045);
-    lat.DrawLatex(0.15, 0.93, Form("%s – %d#circ detector", cfg.label, angle));
+    lat.SetTextAlign(23); // centred, top
+    lat.SetTextSize(0.052);
+    lat.DrawLatex(0.55, 0.98, cfg.title);
 }
 
 // ================================================================
@@ -361,7 +408,8 @@ void compare_pg_profiles(const char* motherDir = "./",
 
             std::vector<TGraph*> graphs;
             std::vector<std::string> labels;
-            std::vector<Int_t> colorIdx;
+            std::vector<Int_t> colors;
+            std::vector<Int_t> markers;
             std::vector<Int_t> lineStyles;
 
             for (const auto& run : runs) {
@@ -382,7 +430,8 @@ void compare_pg_profiles(const char* motherDir = "./",
                 }
                 graphs.push_back((TGraph*)g->Clone());
                 labels.push_back(run.label);
-                colorIdx.push_back(run.colorIdx);
+                colors.push_back(run.color);
+                markers.push_back(run.marker);
                 lineStyles.push_back(run.lineStyle);
                 f->Close();
                 delete f;
@@ -394,7 +443,7 @@ void compare_pg_profiles(const char* motherDir = "./",
                                       Form("PG comparison – %s, %d deg", cfg.label, angle),
                                       kPadSize, kPadSize);
             c->cd();
-            DrawOverlayPad(cfg, angle, graphs, labels, colorIdx, lineStyles);
+            DrawOverlayPad(cfg, angle, graphs, labels, colors, markers, lineStyles);
 
             TDirectory* dAngle = dLines[iLine]->mkdir(Form("%ddeg", angle));
             dAngle->cd();
