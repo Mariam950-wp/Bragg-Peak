@@ -36,8 +36,8 @@
 // Bragg peak depth in PMMA (mm), per beam energy used in this study.
 // Looked up from `dataDir`'s name (see BraggPeakDepthMm), or overridden
 // explicitly via the braggPeakMm argument.
-static const Double_t kDbpMm130 = 107.0; // 130.87 MeV protons
-static const Double_t kDbpMm70  = 33.0;  // 70.54 MeV protons
+static const Double_t kDbpMm130 = 107.4; // 130.87 MeV protons
+static const Double_t kDbpMm70  = 36.4;  // 70.54 MeV protons
 static const Int_t    kNAngles       = 2;
 static const Int_t    kSpecificAngles[kNAngles] = {90, 120};
 
