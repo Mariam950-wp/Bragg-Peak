@@ -30,8 +30,9 @@
 /// shape + line style encode the physics list, so every (energy, physics
 /// list) pair is a unique combination and the two energies read at a glance.
 /// The x-axis (z - d_{BP}, "effective target thickness - proton range") is
-/// fixed to -35..10 mm with a red line at 0 marking the Bragg peak, no grid,
-/// and a centred nuclear-transition title (e.g. "^{12}C_{4.44 -> g.s.}").
+/// fixed to -35..10 mm with a red line at 0 marking the Bragg peak, x/y
+/// gridlines, and a centred nuclear-transition title (e.g.
+/// "^{12}C_{4.44 -> g.s.}").
 ///
 /// Each (gamma line, detector angle) combination is drawn on its own
 /// separate square picture (one JPG each), overlaying every run — e.g. the
@@ -111,9 +112,11 @@ void ApplyGlobalStyle()
 {
     gStyle->SetOptStat(0);
     gStyle->SetOptTitle(0);
-    gStyle->SetPadGridX(kFALSE); // reference plot has no grid
-    gStyle->SetPadGridY(kFALSE);
-    gStyle->SetPadTickX(1);      // ticks on all four frame sides
+    gStyle->SetPadGridX(kTRUE);   // x and y gridlines
+    gStyle->SetPadGridY(kTRUE);
+    gStyle->SetGridStyle(3);      // dotted, light grey
+    gStyle->SetGridColor(kGray);
+    gStyle->SetPadTickX(1);       // ticks on all four frame sides
     gStyle->SetPadTickY(1);
     gStyle->SetEndErrorSize(3);
 }
