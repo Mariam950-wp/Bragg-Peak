@@ -24,12 +24,14 @@
 /// label with its energyTag removed) and shared across energies; the
 /// energyTag instead selects the line style (1st tag solid, 2nd dashed,
 /// ...), so e.g. QBBC at 130 and 70 MeV are drawn in the same colour, one
-/// solid and one dashed. For each of the 90/120 deg detector angles, the
-/// 4.4 MeV and 9.6 MeV comparisons are drawn side by side as two pads of
-/// one canvas (one JPG per angle), with a legend (labelled by subdirectory
-/// name, common prefix stripped). Output (canvases as JPG + one ROOT file
-/// with all canvases/graphs), named after `energyTags`, is written to
-/// `motherDir`.
+/// solid and one dashed. Each (gamma line, detector angle) combination is
+/// drawn on its own separate square picture (one JPG each), overlaying
+/// every matching run — e.g. the 4.4 MeV line at 90 deg with 130 MeV and
+/// 70 MeV for three physics lists each = 6 histograms on one picture. With
+/// two gamma lines (4.4/9.6 MeV) and two angles (90/120 deg) this yields
+/// four pictures. Each has a legend (labelled by subdirectory name, common
+/// prefix stripped). Output (the JPGs + one ROOT file with all
+/// canvases/graphs), named after `energyTags`, is written to `motherDir`.
 ///
 /// Usage:
 ///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV,70MeV")'
@@ -313,17 +315,16 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
     for (Int_t iLine = 0; iLine < kNLines; ++iLine)
         dLines[iLine] = dGraphs->mkdir(kLines[iLine].dirTag);
 
-    for (Int_t iAngle = 0; iAngle < kNAngles; ++iAngle) {
-        Int_t angle = kAngles[iAngle];
+    // One separate square picture per (gamma line, detector angle) combo,
+    // each overlaying every matching run (e.g. 130 and 70 MeV x several
+    // physics lists = up to 6 curves).
+    const Int_t kPadSize = 650; // square picture
+    for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
+        const LineCfg& cfg = kLines[iLine];
 
-        const Int_t kPadSize = 650; // square pads: kNLines of them side by side
-        TCanvas* c = new TCanvas(Form("c_compare_%ddeg", angle),
-                                  Form("PG comparison – %d deg", angle),
-                                  kNLines * kPadSize, kPadSize);
-        c->Divide(kNLines, 1);
+        for (Int_t iAngle = 0; iAngle < kNAngles; ++iAngle) {
+            Int_t angle = kAngles[iAngle];
 
-        for (Int_t iLine = 0; iLine < kNLines; ++iLine) {
-            const LineCfg& cfg = kLines[iLine];
             std::vector<TGraph*> graphs;
             std::vector<std::string> labels;
             std::vector<Int_t> colorIdx;
@@ -353,8 +354,12 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
                 delete f;
             }
 
-            c->cd(iLine + 1);
             if (graphs.empty()) continue;
+
+            TCanvas* c = new TCanvas(Form("c_compare_%s_%ddeg", cfg.fileTag, angle),
+                                      Form("PG comparison – %s, %d deg", cfg.label, angle),
+                                      kPadSize, kPadSize);
+            c->cd();
             DrawOverlayPad(cfg, angle, graphs, labels, colorIdx, lineStyles);
 
             TDirectory* dAngle = dLines[iLine]->mkdir(Form("%ddeg", angle));
@@ -364,13 +369,12 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
                 graphs[i]->Write();
             }
             fOut->cd();
-        }
 
-        c->cd();
-        std::string jpgPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
-                              Form("_%ddeg", angle) + ".jpg";
-        c->SaveAs(jpgPath.c_str());
-        c->Write();
+            std::string jpgPath = std::string(motherDir) + "/PG_comparison" + tagSuffix +
+                                  "_" + cfg.fileTag + Form("_%ddeg", angle) + ".jpg";
+            c->SaveAs(jpgPath.c_str());
+            c->Write();
+        }
     }
 
     fOut->Write("", TObject::kOverwrite);
