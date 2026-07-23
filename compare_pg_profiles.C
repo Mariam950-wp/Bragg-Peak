@@ -175,7 +175,7 @@ void DrawOverlayPad(const LineCfg& cfg,
 
         g->Draw(i == 0 ? "APL" : "PL SAME");
         if (i == 0) {
-            g->GetXaxis()->SetTitle("Depth / d_{BP}");
+            g->GetXaxis()->SetTitle("z - d_{BP}  [mm]");
             g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
             g->GetXaxis()->SetTitleSize(0.045);
             g->GetYaxis()->SetTitleSize(0.045);

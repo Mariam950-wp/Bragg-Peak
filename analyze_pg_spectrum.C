@@ -121,14 +121,14 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                     nGamma += h->GetBinContent(ib);
             }
             Double_t yield = nGamma * efficiency / (kFOV * kDeltaOmega);
-            graphs[j]->SetPoint(iFile, files[iFile].depth / kBraggPeakMm, yield);
+            graphs[j]->SetPoint(iFile, files[iFile].depth - kBraggPeakMm, yield);
         }
         f->Close();
         delete f;
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;Depth / d_{BP};#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;z - d_{BP}  [mm];#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
                                  graphTag, kSpecificAngles[j]));
     }
 }
