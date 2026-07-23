@@ -9,14 +9,18 @@
 ///   graphs/6p13MeV/        – TGraph per angle for the 6.13 MeV line
 ///   graphs/9p6MeV/         – TGraph per angle for the 9.6 MeV line
 ///
-/// Each graph's x-axis is z - d_{BP} (mm), so the Bragg peak sits at 0.
-/// d_{BP} is picked from the "130MeV"/"70MeV" tag found in `dataDir`
-/// (BraggPeakDepthMm); pass braggPeakMm explicitly to override.
+/// Each graph's x-axis is z - d_{BP} (mm), so the Bragg peak sits at 0:
+/// 107.4 mm is subtracted for 130 MeV, 36.4 mm for 70 MeV. d_{BP} is picked
+/// from the "130MeV"/"70MeV" tag in `dataDir`; if neither tag is present
+/// the macro refuses to run (rather than subtract the wrong value), and you
+/// must pass braggPeakMm explicitly (which also overrides the tag).
 ///
 /// Usage (interactive):
 ///   root -l 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
 /// Usage (batch):
 ///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
+/// Untagged directory — give d_{BP} explicitly (36.4 mm here for 70 MeV):
+///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_FTFP_BERT_HP", "PG_analysis.root", 36.4)'
 
 #include "TFile.h"
 #include "TH1D.h"
@@ -97,18 +101,16 @@ std::vector<FileEntry> CollectInputFiles(const char* dataDir)
 
 // Infer the Bragg peak depth from the "130MeV"/"70MeV" tag in dataDir's
 // path, matching the naming convention CollectRunDirs relies on in
-// compare_pg_profiles.C. Falls back to the 130 MeV value with a warning
-// if neither tag is found.
+// compare_pg_profiles.C. Returns -1 (not a silent default) when neither
+// tag is present, so the caller can refuse rather than subtract the wrong
+// d_BP: the 130 MeV value applied to a 70 MeV run leaves the Bragg peak at
+// z - d_BP ~ -71 mm instead of 0.
 Double_t BraggPeakDepthMm(const char* dataDir)
 {
     std::string dir(dataDir);
     if (dir.find("130MeV") != std::string::npos) return kDbpMm130;
     if (dir.find("70MeV")  != std::string::npos) return kDbpMm70;
-    ::Warning("BraggPeakDepthMm",
-              "Cannot infer beam energy from \"%s\" (expected \"130MeV\" or \"70MeV\" "
-              "in the path); defaulting to d_BP = %.1f mm. Pass braggPeakMm explicitly to override.",
-              dataDir, kDbpMm130);
-    return kDbpMm130;
+    return -1.;
 }
 
 // ================================================================
@@ -192,7 +194,20 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     std::vector<FileEntry> files = CollectInputFiles(dataDir);
     if (files.empty()) return;
 
+    // Determine the Bragg peak depth to subtract: explicit argument wins,
+    // otherwise infer from the "130MeV"/"70MeV" tag in dataDir. Refuse to
+    // run if neither is available rather than silently subtracting the wrong
+    // value (e.g. 107.4 mm from a 70 MeV run, whose peak would then land
+    // near z - d_BP = -71 mm instead of 0).
     Double_t dBP = (braggPeakMm > 0.) ? braggPeakMm : BraggPeakDepthMm(dataDir);
+    if (dBP <= 0.) {
+        ::Error("analyze_pg_spectrum",
+                "Cannot determine d_BP: \"%s\" contains neither \"130MeV\" nor "
+                "\"70MeV\". Pass it explicitly, e.g. "
+                "analyze_pg_spectrum(\"%s\", \"%s\", 36.4) for 70 MeV or 107.4 for 130 MeV.",
+                dataDir, dataDir, outFile);
+        return;
+    }
     Printf("Using d_BP = %.1f mm", dBP);
 
     Printf("Found %d file(s):", (Int_t)files.size());
