@@ -20,7 +20,11 @@
 /// runs from different beam energies land in the same legend/picture (the
 /// x-axis, z - d_{BP}, already lines their Bragg peaks up at 0). Pass a
 /// single tag (e.g. "130MeV") to compare only that energy across physics
-/// lists, as before. For each of the 90/120 deg detector angles, the
+/// lists, as before. Colour/marker are assigned per physics list (the
+/// label with its energyTag removed) and shared across energies; the
+/// energyTag instead selects the line style (1st tag solid, 2nd dashed,
+/// ...), so e.g. QBBC at 130 and 70 MeV are drawn in the same colour, one
+/// solid and one dashed. For each of the 90/120 deg detector angles, the
 /// 4.4 MeV and 9.6 MeV comparisons are drawn side by side as two pads of
 /// one canvas (one JPG per angle), with a legend (labelled by subdirectory
 /// name, common prefix stripped). Output (canvases as JPG + one ROOT file
@@ -67,9 +71,19 @@ static const Int_t kColors[] = {
 static const Int_t kMarkers[] = { 20, 21, 22, 23, 33, 34, 47, 43 };
 static const Int_t kNStyles = sizeof(kColors) / sizeof(kColors[0]);
 
+// Line style per energyTags entry (1=solid, 2=dashed, 3=dotted, 4=dash-dot),
+// so e.g. the 1st tag ("130MeV") is always drawn solid and the 2nd
+// ("70MeV") always dashed, regardless of colour.
+static const Int_t kLineStyles[] = { 1, 2, 3, 4 };
+static const Int_t kNLineStyles = sizeof(kLineStyles) / sizeof(kLineStyles[0]);
+
 struct RunEntry {
-    std::string label;    // legend label (subdirectory name, prefix stripped)
-    std::string path;     // full path to PG_analysis.root
+    std::string label;     // legend label (subdirectory name, prefix stripped)
+    std::string path;      // full path to PG_analysis.root
+    std::string energyTag; // which energyTags entry matched (selects line style)
+    std::string styleKey;  // label with energyTag removed (selects colour/marker)
+    Int_t       colorIdx  = 0; // index into kColors/kMarkers, shared across energies
+    Int_t       lineStyle = 1; // solid by default
 };
 
 // ================================================================
@@ -117,10 +131,11 @@ std::vector<RunEntry> CollectRunDirs(const char* motherDir, const std::vector<st
     while ((entry = gSystem->GetDirEntry(dh)) != nullptr) {
         std::string name(entry);
         if (name == "." || name == "..") continue;
+        std::string matchedTag;
         if (!energyTags.empty()) {
             bool matches = false;
             for (const auto& tag : energyTags)
-                if (name.find(tag) != std::string::npos) { matches = true; break; }
+                if (name.find(tag) != std::string::npos) { matches = true; matchedTag = tag; break; }
             if (!matches) continue;
         }
 
@@ -129,8 +144,9 @@ std::vector<RunEntry> CollectRunDirs(const char* motherDir, const std::vector<st
         if (gSystem->AccessPathName(rootFile.c_str()) != 0) continue; // not found
 
         RunEntry re;
-        re.label = name;
-        re.path  = rootFile;
+        re.label     = name;
+        re.path      = rootFile;
+        re.energyTag = matchedTag;
         runs.push_back(re);
     }
     gSystem->FreeDirectory(dh);
@@ -164,14 +180,58 @@ void StripCommonPrefix(std::vector<RunEntry>& runs)
 }
 
 // ================================================================
-//  4. DrawOverlayPad
+//  4. AssignPlotStyles
+//     Group runs by "styleKey" (their label with the energyTag substring
+//     removed, e.g. "130MeV_QBBC" and "70MeV_QBBC" both key to "QBBC") and
+//     give each distinct key its own colour/marker. The energyTag instead
+//     selects the line style, so e.g. QBBC at 130 MeV and 70 MeV are drawn
+//     in the same colour, one solid and one dashed.
+// ================================================================
+void AssignPlotStyles(std::vector<RunEntry>& runs, const std::vector<std::string>& tags)
+{
+    for (auto& r : runs) {
+        std::string key = r.label;
+        if (!r.energyTag.empty()) {
+            std::size_t pos = key.find(r.energyTag);
+            if (pos != std::string::npos) key.erase(pos, r.energyTag.size());
+        }
+        while (!key.empty() && key.front() == '_') key.erase(key.begin());
+        while (!key.empty() && key.back()  == '_') key.pop_back();
+        r.styleKey = key.empty() ? r.label : key;
+    }
+
+    std::vector<std::string> styleKeys;
+    for (const auto& r : runs) {
+        if (std::find(styleKeys.begin(), styleKeys.end(), r.styleKey) == styleKeys.end())
+            styleKeys.push_back(r.styleKey);
+    }
+    std::sort(styleKeys.begin(), styleKeys.end());
+
+    for (auto& r : runs) {
+        auto it = std::find(styleKeys.begin(), styleKeys.end(), r.styleKey);
+        r.colorIdx = (Int_t)std::distance(styleKeys.begin(), it) % kNStyles;
+
+        r.lineStyle = 1; // solid fallback (e.g. no energyTags filter was used)
+        for (std::size_t i = 0; i < tags.size(); ++i) {
+            if (tags[i] == r.energyTag) {
+                r.lineStyle = kLineStyles[i % kNLineStyles];
+                break;
+            }
+        }
+    }
+}
+
+// ================================================================
+//  5. DrawOverlayPad
 //     Draw `graphs` (already loaded/cloned) overlaid with a legend into
 //     the current pad, for a given gamma line and detector angle.
 // ================================================================
 void DrawOverlayPad(const LineCfg& cfg,
                      Int_t angle,
                      const std::vector<TGraph*>& graphs,
-                     const std::vector<std::string>& labels)
+                     const std::vector<std::string>& labels,
+                     const std::vector<Int_t>& colorIdx,
+                     const std::vector<Int_t>& lineStyles)
 {
     gPad->SetLeftMargin(0.15);
     gPad->SetBottomMargin(0.13);
@@ -192,12 +252,13 @@ void DrawOverlayPad(const LineCfg& cfg,
 
     for (std::size_t i = 0; i < graphs.size(); ++i) {
         TGraph* g = graphs[i];
-        Int_t style = (Int_t)(i % kNStyles);
+        Int_t style = colorIdx[i];
         g->SetLineColor(kColors[style]);
         g->SetMarkerColor(kColors[style]);
         g->SetMarkerStyle(kMarkers[style]);
         g->SetMarkerSize(0.9);
         g->SetLineWidth(2);
+        g->SetLineStyle(lineStyles[i]);
 
         g->Draw(i == 0 ? "APL" : "PL SAME");
         if (i == 0) {
@@ -233,6 +294,7 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
         return;
     }
     StripCommonPrefix(runs);
+    AssignPlotStyles(runs, tags);
 
     Printf("Found %d run(s) for %s:", (Int_t)runs.size(), energyTags);
     for (auto& r : runs) Printf("  %-30s  ->  %s", r.label.c_str(), r.path.c_str());
@@ -264,6 +326,8 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
             const LineCfg& cfg = kLines[iLine];
             std::vector<TGraph*> graphs;
             std::vector<std::string> labels;
+            std::vector<Int_t> colorIdx;
+            std::vector<Int_t> lineStyles;
 
             for (const auto& run : runs) {
                 TFile* f = TFile::Open(run.path.c_str(), "READ");
@@ -283,13 +347,15 @@ void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = 
                 }
                 graphs.push_back((TGraph*)g->Clone());
                 labels.push_back(run.label);
+                colorIdx.push_back(run.colorIdx);
+                lineStyles.push_back(run.lineStyle);
                 f->Close();
                 delete f;
             }
 
             c->cd(iLine + 1);
             if (graphs.empty()) continue;
-            DrawOverlayPad(cfg, angle, graphs, labels);
+            DrawOverlayPad(cfg, angle, graphs, labels, colorIdx, lineStyles);
 
             TDirectory* dAngle = dLines[iLine]->mkdir(Form("%ddeg", angle));
             dAngle->cd();

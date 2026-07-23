@@ -9,10 +9,14 @@
 ///   graphs/6p13MeV/        – TGraph per angle for the 6.13 MeV line
 ///   graphs/9p6MeV/         – TGraph per angle for the 9.6 MeV line
 ///
+/// Each graph's x-axis is z - d_{BP} (mm), so the Bragg peak sits at 0.
+/// d_{BP} is picked from the "130MeV"/"70MeV" tag found in `dataDir`
+/// (BraggPeakDepthMm); pass braggPeakMm explicitly to override.
+///
 /// Usage (interactive):
-///   root -l 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
+///   root -l 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
 /// Usage (batch):
-///   root -l -b -q 'analyze_pg_spectrum.C("./", "PG_analysis.root")'
+///   root -l -b -q 'analyze_pg_spectrum.C("./prompt_gamma_spectra_70MeV_QBBC", "PG_analysis.root")'
 
 #include "TFile.h"
 #include "TH1D.h"
@@ -29,8 +33,11 @@
 //  Configuration: histogram names, labels, colours
 // ================================================================
 
-// Bragg peak position for 130 MeV protons in PMMA (mm)
-static const Double_t kBraggPeakMm  = 107.0;
+// Bragg peak depth in PMMA (mm), per beam energy used in this study.
+// Looked up from `dataDir`'s name (see BraggPeakDepthMm), or overridden
+// explicitly via the braggPeakMm argument.
+static const Double_t kDbpMm130 = 107.0; // 130.87 MeV protons
+static const Double_t kDbpMm70  = 33.0;  // 70.54 MeV protons
 static const Int_t    kNAngles       = 2;
 static const Int_t    kSpecificAngles[kNAngles] = {90, 120};
 
@@ -88,6 +95,22 @@ std::vector<FileEntry> CollectInputFiles(const char* dataDir)
     return files;
 }
 
+// Infer the Bragg peak depth from the "130MeV"/"70MeV" tag in dataDir's
+// path, matching the naming convention CollectRunDirs relies on in
+// compare_pg_profiles.C. Falls back to the 130 MeV value with a warning
+// if neither tag is found.
+Double_t BraggPeakDepthMm(const char* dataDir)
+{
+    std::string dir(dataDir);
+    if (dir.find("130MeV") != std::string::npos) return kDbpMm130;
+    if (dir.find("70MeV")  != std::string::npos) return kDbpMm70;
+    ::Warning("BraggPeakDepthMm",
+              "Cannot infer beam energy from \"%s\" (expected \"130MeV\" or \"70MeV\" "
+              "in the path); defaulting to d_BP = %.1f mm. Pass braggPeakMm explicitly to override.",
+              dataDir, kDbpMm130);
+    return kDbpMm130;
+}
+
 // ================================================================
 //  2. FillGammaLineGraphs
 // ================================================================
@@ -97,7 +120,8 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                           const char* graphTag,
                           Double_t eLo,
                           Double_t eHi,
-                          Double_t efficiency)
+                          Double_t efficiency,
+                          Double_t braggPeakMm)
 {
     const Int_t nFiles = (Int_t)files.size();
     for (Int_t iFile = 0; iFile < nFiles; ++iFile) {
@@ -121,7 +145,7 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
                     nGamma += h->GetBinContent(ib);
             }
             Double_t yield = nGamma * efficiency / (kFOV * kDeltaOmega);
-            graphs[j]->SetPoint(iFile, files[iFile].depth - kBraggPeakMm, yield);
+            graphs[j]->SetPoint(iFile, files[iFile].depth - braggPeakMm, yield);
         }
         f->Close();
         delete f;
@@ -162,10 +186,14 @@ void WriteResultsToFile(TFile* fOut, TGraph* g44[], TGraph* g613[], TGraph* g96[
 //  Main entry point
 // ================================================================
 void analyze_pg_spectrum(const char* dataDir = "./",
-                          const char* outFile = "PG_analysis.root")
+                          const char* outFile = "PG_analysis.root",
+                          Double_t braggPeakMm = -1.)
 {
     std::vector<FileEntry> files = CollectInputFiles(dataDir);
     if (files.empty()) return;
+
+    Double_t dBP = (braggPeakMm > 0.) ? braggPeakMm : BraggPeakDepthMm(dataDir);
+    Printf("Using d_BP = %.1f mm", dBP);
 
     Printf("Found %d file(s):", (Int_t)files.size());
     for (auto& fe : files)
@@ -178,9 +206,9 @@ void analyze_pg_spectrum(const char* dataDir = "./",
         g96[j]  = new TGraph((Int_t)files.size());
     }
 
-    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0, kEff44);
-    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3, kEff613);
-    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0, kEff96);
+    FillGammaLineGraphs(files, g44,  "4.400000",  "4p4MeV",   4.0, 50.0, kEff44,  dBP);
+    FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3, kEff613, dBP);
+    FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0, kEff96,  dBP);
 
     std::string outPath = std::string(dataDir) + "/" + outFile;
     TFile* fOut = TFile::Open(outPath.c_str(), "RECREATE");
