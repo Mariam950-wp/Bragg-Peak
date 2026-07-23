@@ -182,14 +182,15 @@ void analyze_pg_spectrum(const char* dataDir = "./",
     FillGammaLineGraphs(files, g613, "6.130000",  "6p13MeV",  5.6,  6.3, kEff613);
     FillGammaLineGraphs(files, g96,  "9.600000",  "9p6MeV",   9.0, 10.0, kEff96);
 
-    TFile* fOut = TFile::Open(outFile, "RECREATE");
+    std::string outPath = std::string(dataDir) + "/" + outFile;
+    TFile* fOut = TFile::Open(outPath.c_str(), "RECREATE");
     if (!fOut || fOut->IsZombie()) {
-        ::Error("analyze_pg_spectrum", "Cannot create: %s", outFile);
+        ::Error("analyze_pg_spectrum", "Cannot create: %s", outPath.c_str());
         return;
     }
     WriteResultsToFile(fOut, g44, g613, g96);
     fOut->Write("", TObject::kOverwrite);
     fOut->Close();
 
-    Printf("\nResults written to: %s", outFile);
+    Printf("\nResults written to: %s", outPath.c_str());
 }
