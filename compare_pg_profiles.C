@@ -15,26 +15,35 @@
 ///   graphs/4p4MeV/4p4MeV_Gamma_90deg   graphs/4p4MeV/4p4MeV_Gamma_120deg
 ///   graphs/9p6MeV/9p6MeV_Gamma_90deg   graphs/9p6MeV/9p6MeV_Gamma_120deg
 ///
-/// `energyTags` is a comma-separated list (e.g. "130MeV,70MeV"); every
-/// subdirectory whose name contains ANY of the listed tags is included, so
-/// runs from different beam energies land in the same legend/picture (the
-/// x-axis, z - d_{BP}, already lines their Bragg peaks up at 0). Pass a
-/// single tag (e.g. "130MeV") to compare only that energy across physics
-/// lists, as before. Colour/marker are assigned per physics list (the
-/// label with its energyTag removed) and shared across energies; the
-/// energyTag instead selects the line style (1st tag solid, 2nd dashed,
-/// ...), so e.g. QBBC at 130 and 70 MeV are drawn in the same colour, one
-/// solid and one dashed. Each (gamma line, detector angle) combination is
-/// drawn on its own separate square picture (one JPG each), overlaying
-/// every matching run — e.g. the 4.4 MeV line at 90 deg with 130 MeV and
-/// 70 MeV for three physics lists each = 6 histograms on one picture. With
-/// two gamma lines (4.4/9.6 MeV) and two angles (90/120 deg) this yields
-/// four pictures. Each has a legend (labelled by subdirectory name, common
-/// prefix stripped). Output (the JPGs + one ROOT file with all
-/// canvases/graphs), named after `energyTags`, is written to `motherDir`.
+/// The runs to overlay come from one of two sources:
+///   * auto-discovery (default): every subdirectory of motherDir whose name
+///     contains ANY tag in `energyTags` (comma-separated, e.g.
+///     "130MeV,70MeV") and that holds a PG_analysis.root; or
+///   * an explicit `dirList` (comma-separated subdirectory names, in order)
+///     — pass this when a directory does NOT follow the "<energy>MeV"
+///     naming convention (e.g. a 70 MeV run named just
+///     "prompt_gamma_spectra_FTFP_BERT_HP"), so auto-discovery would miss
+///     it, or to control exactly which runs appear.
+///
+/// Every run gets its OWN distinct colour+marker so all overlaid curves are
+/// visually separable (e.g. six curves = six colours). The energyTag
+/// additionally selects the line style (1st tag solid, 2nd dashed, ...) as
+/// a beam-energy grouping cue; a run whose name carries no tag stays solid.
+/// The x-axis, z - d_{BP}, lines the Bragg peaks of both energies up at 0.
+///
+/// Each (gamma line, detector angle) combination is drawn on its own
+/// separate square picture (one JPG each), overlaying every run — e.g. the
+/// 4.4 MeV line at 90 deg with 130 MeV and 70 MeV for three physics lists
+/// each = 6 histograms on one picture. With two gamma lines (4.4/9.6 MeV)
+/// and two angles (90/120 deg) this yields four pictures. Each has a legend
+/// (labelled by subdirectory name, common prefix stripped). Output (the
+/// JPGs + one ROOT file with all canvases/graphs), named after
+/// `energyTags`, is written to `motherDir`.
 ///
 /// Usage:
 ///   root -l -b -q 'compare_pg_profiles.C("/path/to/motherDir", "130MeV,70MeV")'
+///   // explicit list (include a dir that lacks the "70MeV" tag):
+///   root -l -b -q 'compare_pg_profiles.C("/motherDir", "130MeV,70MeV", "prompt_gamma_spectra_130MeV_FTFP_BERT_HP,prompt_gamma_spectra_130MeV_QBBC,prompt_gamma_spectra_130MeV_QGSP_BIC_HP_EMZ,prompt_gamma_spectra_70MeV_QBBC,prompt_gamma_spectra_70MeV_QGSP_BIC_HP_EMZ,prompt_gamma_spectra_FTFP_BERT_HP")'
 
 #include "TFile.h"
 #include "TGraph.h"
@@ -83,9 +92,8 @@ struct RunEntry {
     std::string label;     // legend label (subdirectory name, prefix stripped)
     std::string path;      // full path to PG_analysis.root
     std::string energyTag; // which energyTags entry matched (selects line style)
-    std::string styleKey;  // label with energyTag removed (selects colour/marker)
-    Int_t       colorIdx  = 0; // index into kColors/kMarkers, shared across energies
-    Int_t       lineStyle = 1; // solid by default
+    Int_t       colorIdx  = 0; // index into kColors/kMarkers (distinct per run)
+    Int_t       lineStyle = 1; // solid by default; dashed etc. per energy tag
 };
 
 // ================================================================
@@ -114,6 +122,9 @@ std::vector<std::string> SplitTags(const std::string& tagList)
     while (start <= tagList.size()) {
         std::size_t comma = tagList.find(',', start);
         std::string tag = tagList.substr(start, comma - start);
+        std::size_t b = tag.find_first_not_of(" \t"); // trim surrounding spaces
+        std::size_t e = tag.find_last_not_of(" \t");
+        tag = (b == std::string::npos) ? std::string() : tag.substr(b, e - b + 1);
         if (!tag.empty()) tags.push_back(tag);
         if (comma == std::string::npos) break;
         start = comma + 1;
@@ -157,6 +168,31 @@ std::vector<RunEntry> CollectRunDirs(const char* motherDir, const std::vector<st
     return runs;
 }
 
+// Build runs from an explicit, ordered list of subdirectory names (relative
+// to motherDir), keeping the given order. Use this when a directory does not
+// carry an "<energy>MeV" tag and so would be skipped by CollectRunDirs. The
+// energy tag is still detected from each name (when present) for line style.
+std::vector<RunEntry> CollectRunsFromList(const char* motherDir,
+                                          const std::vector<std::string>& dirNames,
+                                          const std::vector<std::string>& energyTags)
+{
+    std::vector<RunEntry> runs;
+    for (const auto& name : dirNames) {
+        std::string rootFile = std::string(motherDir) + "/" + name + "/PG_analysis.root";
+        if (gSystem->AccessPathName(rootFile.c_str()) != 0) {
+            ::Warning("CollectRunsFromList", "Skipping \"%s\": no PG_analysis.root", name.c_str());
+            continue;
+        }
+        RunEntry re;
+        re.label = name;
+        re.path  = rootFile;
+        for (const auto& tag : energyTags)
+            if (name.find(tag) != std::string::npos) { re.energyTag = tag; break; }
+        runs.push_back(re);
+    }
+    return runs;
+}
+
 // ================================================================
 //  3. StripCommonPrefix
 //     Shortens legend labels by removing the prefix shared by all runs
@@ -183,40 +219,21 @@ void StripCommonPrefix(std::vector<RunEntry>& runs)
 
 // ================================================================
 //  4. AssignPlotStyles
-//     Group runs by "styleKey" (their label with the energyTag substring
-//     removed, e.g. "130MeV_QBBC" and "70MeV_QBBC" both key to "QBBC") and
-//     give each distinct key its own colour/marker. The energyTag instead
-//     selects the line style, so e.g. QBBC at 130 MeV and 70 MeV are drawn
-//     in the same colour, one solid and one dashed.
+//     Give every run its own distinct colour+marker (by index) so all
+//     overlaid curves stay visually separable even when many share a
+//     detector angle/gamma line. The energyTag additionally selects the
+//     line style (1st tag solid, 2nd dashed, ...) as a beam-energy cue;
+//     runs whose name carries no tag stay solid.
 // ================================================================
 void AssignPlotStyles(std::vector<RunEntry>& runs, const std::vector<std::string>& tags)
 {
-    for (auto& r : runs) {
-        std::string key = r.label;
-        if (!r.energyTag.empty()) {
-            std::size_t pos = key.find(r.energyTag);
-            if (pos != std::string::npos) key.erase(pos, r.energyTag.size());
-        }
-        while (!key.empty() && key.front() == '_') key.erase(key.begin());
-        while (!key.empty() && key.back()  == '_') key.pop_back();
-        r.styleKey = key.empty() ? r.label : key;
-    }
+    for (std::size_t r = 0; r < runs.size(); ++r) {
+        runs[r].colorIdx = (Int_t)(r % kNStyles);
 
-    std::vector<std::string> styleKeys;
-    for (const auto& r : runs) {
-        if (std::find(styleKeys.begin(), styleKeys.end(), r.styleKey) == styleKeys.end())
-            styleKeys.push_back(r.styleKey);
-    }
-    std::sort(styleKeys.begin(), styleKeys.end());
-
-    for (auto& r : runs) {
-        auto it = std::find(styleKeys.begin(), styleKeys.end(), r.styleKey);
-        r.colorIdx = (Int_t)std::distance(styleKeys.begin(), it) % kNStyles;
-
-        r.lineStyle = 1; // solid fallback (e.g. no energyTags filter was used)
+        runs[r].lineStyle = 1; // solid fallback (no energy tag detected)
         for (std::size_t i = 0; i < tags.size(); ++i) {
-            if (tags[i] == r.energyTag) {
-                r.lineStyle = kLineStyles[i % kNLineStyles];
+            if (!runs[r].energyTag.empty() && tags[i] == runs[r].energyTag) {
+                runs[r].lineStyle = kLineStyles[i % kNLineStyles];
                 break;
             }
         }
@@ -245,12 +262,18 @@ void DrawOverlayPad(const LineCfg& cfg,
             if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
     }
 
-    Int_t nCols = (Int_t)graphs.size() > 2 ? 2 : 1;
-    Int_t nRows = ((Int_t)graphs.size() + nCols - 1) / nCols;
-    TLegend* leg = new TLegend(0.55, 0.89 - 0.05 * nRows, 0.89, 0.89);
-    leg->SetTextSize(0.028);
+    // Single column: the run labels ("130MeV_QGSP_BIC_HP_EMZ", ...) are too
+    // long to sit side by side without overlapping.
+    Int_t nEntries = (Int_t)graphs.size();
+    TLegend* leg = new TLegend(0.44, 0.88 - 0.045 * nEntries, 0.89, 0.88);
+    leg->SetTextSize(0.026);
     leg->SetBorderSize(0);
-    leg->SetNColumns(nCols);
+    leg->SetFillStyle(0); // transparent so it never masks an overlaid curve
+    leg->SetNColumns(1);
+
+    // Extra top headroom that grows with the (taller) legend, so the peaks
+    // stay clear of the entries rather than being drawn over them.
+    Double_t headroom = 1.15 + 0.09 * nEntries;
 
     for (std::size_t i = 0; i < graphs.size(); ++i) {
         TGraph* g = graphs[i];
@@ -268,7 +291,7 @@ void DrawOverlayPad(const LineCfg& cfg,
             g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]");
             g->GetXaxis()->SetTitleSize(0.045);
             g->GetYaxis()->SetTitleSize(0.045);
-            g->GetYaxis()->SetRangeUser(0., yMax * 1.15);
+            g->GetYaxis()->SetRangeUser(0., yMax * headroom);
         }
         leg->AddEntry(g, labels[i].c_str(), "lp");
     }
@@ -284,15 +307,26 @@ void DrawOverlayPad(const LineCfg& cfg,
 // ================================================================
 //  Main entry point
 // ================================================================
-void compare_pg_profiles(const char* motherDir = "./", const char* energyTags = "130MeV,70MeV")
+void compare_pg_profiles(const char* motherDir = "./",
+                         const char* energyTags = "130MeV,70MeV",
+                         const char* dirList = "")
 {
     ApplyGlobalStyle();
 
     std::vector<std::string> tags = SplitTags(energyTags);
-    std::vector<RunEntry> runs = CollectRunDirs(motherDir, tags);
+
+    // Two ways to pick the runs to overlay: an explicit comma-separated list
+    // of subdirectory names (dirList), or auto-discovery by energyTags. Use
+    // dirList when a directory lacks an "<energy>MeV" tag (so auto-discovery
+    // would miss it), or to control exactly which runs / what order appear.
+    std::vector<std::string> dirNames = SplitTags(dirList);
+    std::vector<RunEntry> runs = dirNames.empty()
+        ? CollectRunDirs(motherDir, tags)
+        : CollectRunsFromList(motherDir, dirNames, tags);
     if (runs.empty()) {
-        ::Error("compare_pg_profiles", "No PG_analysis.root found under %s matching \"%s\"",
-                 motherDir, energyTags);
+        ::Error("compare_pg_profiles", "No PG_analysis.root found under %s (%s \"%s\")",
+                 motherDir, dirNames.empty() ? "energyTags" : "dirList",
+                 dirNames.empty() ? energyTags : dirList);
         return;
     }
     StripCommonPrefix(runs);
