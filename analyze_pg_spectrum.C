@@ -154,7 +154,7 @@ void FillGammaLineGraphs(const std::vector<FileEntry>& files,
     }
     for (Int_t j = 0; j < kNAngles; ++j) {
         graphs[j]->SetName(Form("%s_Gamma_%ddeg", graphTag, kSpecificAngles[j]));
-        graphs[j]->SetTitle(Form("%s gamma %d deg;z - d_{BP}  [mm];#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
+        graphs[j]->SetTitle(Form("%s gamma %d deg;z - d_{BP}  [mm];#varepsilon N_{#gamma} / (FOV #Delta#Omega)  [proton^{-1} mm^{-1} sr^{-1}]",
                                  graphTag, kSpecificAngles[j]));
     }
 }

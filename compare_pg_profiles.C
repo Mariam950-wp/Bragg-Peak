@@ -339,8 +339,8 @@ void DrawOverlayPad(const LineCfg& cfg,
         if (i == 0) {
             g->GetXaxis()->SetTitle("effective target thickness - proton range (mm)");
             g->GetYaxis()->SetTitle(kYScale == 1.0e9
-                ? "#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega) / 10^{9} protons  (mm^{-1} sr^{-1})"
-                : "#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
+                ? "#varepsilon N_{#gamma} / (FOV #Delta#Omega) / 10^{9} protons  (mm^{-1} sr^{-1})"
+                : "#varepsilon N_{#gamma} / (FOV #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
             g->GetXaxis()->SetTitleSize(0.042);
             g->GetYaxis()->SetTitleSize(0.042);
             g->GetXaxis()->SetLimits(xmin, xmax);
