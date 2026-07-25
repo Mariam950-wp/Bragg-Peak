@@ -85,6 +85,13 @@ static const Int_t kNAngles = sizeof(kAngles) / sizeof(kAngles[0]);
 static const Double_t kXmin = -35.;
 static const Double_t kXmax =  10.;
 
+// Single-number rescale applied to every plotted y-value. analyze_pg_spectrum.C
+// stores the yield per single proton (proton^-1); the experimental reference
+// (Kelleter et al.) plots it per 10^9 protons, so 1e9 overlays the two on the
+// same axis. Set to 1.0 to keep the raw per-proton scale. This is a pure
+// display factor: the profile shape and the Bragg-peak fall-off are unchanged.
+static const Double_t kYScale = 1.0e9;
+
 // Colour encodes the beam ENERGY (experimental-reference style: 130 MeV
 // blue, 70 MeV black), assigned in the order the tags appear in energyTags.
 static const Int_t kEnergyColors[] = { kBlue, kBlack, kRed + 1, kGreen + 2 };
@@ -331,7 +338,9 @@ void DrawOverlayPad(const LineCfg& cfg,
         g->Draw(i == 0 ? "APL" : "PL SAME");
         if (i == 0) {
             g->GetXaxis()->SetTitle("effective target thickness - proton range (mm)");
-            g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
+            g->GetYaxis()->SetTitle(kYScale == 1.0e9
+                ? "#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega) / 10^{9} protons  (mm^{-1} sr^{-1})"
+                : "#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
             g->GetXaxis()->SetTitleSize(0.042);
             g->GetYaxis()->SetTitleSize(0.042);
             g->GetXaxis()->SetLimits(xmin, xmax);
@@ -434,7 +443,12 @@ void compare_pg_profiles(const char* motherDir = "./",
                     delete f;
                     continue;
                 }
-                graphs.push_back((TGraph*)g->Clone());
+                TGraph* gClone = (TGraph*)g->Clone();
+                // Rescale the per-proton yield onto the experimental "per 10^9
+                // protons" axis (kYScale). Shape is untouched.
+                for (Int_t ip = 0; ip < gClone->GetN(); ++ip)
+                    gClone->GetY()[ip] *= kYScale;
+                graphs.push_back(gClone);
                 labels.push_back(run.label);
                 colors.push_back(run.color);
                 markers.push_back(run.marker);
