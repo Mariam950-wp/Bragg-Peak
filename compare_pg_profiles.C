@@ -61,6 +61,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <cmath>
 
 // ================================================================
 //  Configuration: one entry per gamma line to overlay
@@ -86,11 +87,13 @@ static const Double_t kXmin = -35.;
 static const Double_t kXmax =  10.;
 
 // Single-number rescale applied to every plotted y-value. analyze_pg_spectrum.C
-// stores the yield per single proton (proton^-1); the experimental reference
-// (Kelleter et al.) plots it per 10^9 protons, so 1e9 overlays the two on the
-// same axis. Set to 1.0 to keep the raw per-proton scale. This is a pure
-// display factor: the profile shape and the Bragg-peak fall-off are unchanged.
-static const Double_t kYScale = 1.0e9;
+// stores the yield per single proton (proton^-1); multiplying by 10^N expresses
+// it per 10^N protons (the experimental reference, Kelleter et al., uses 10^9).
+// Here 10^11 = per-10^9-protons x 100, lifting the curves onto the higher axis
+// scale of the experimental plots. Set to 1.0 to keep the raw per-proton scale.
+// Pure display factor: the profile shape and the Bragg-peak fall-off are
+// unchanged, and the y-axis title tracks the exponent automatically.
+static const Double_t kYScale = 1.0e11;
 
 // Colour encodes the beam ENERGY (experimental-reference style: 130 MeV
 // blue, 70 MeV black), assigned in the order the tags appear in energyTags.
@@ -338,9 +341,12 @@ void DrawOverlayPad(const LineCfg& cfg,
         g->Draw(i == 0 ? "APL" : "PL SAME");
         if (i == 0) {
             g->GetXaxis()->SetTitle("effective target thickness - proton range (mm)");
-            g->GetYaxis()->SetTitle(kYScale == 1.0e9
-                ? "#varepsilon N_{#gamma} / (FOV #Delta#Omega) / 10^{9} protons  (mm^{-1} sr^{-1})"
-                : "#varepsilon N_{#gamma} / (FOV #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
+            if (kYScale == 1.0) {
+                g->GetYaxis()->SetTitle("#varepsilon N_{#gamma} / (FOV #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
+            } else {
+                Int_t nExp = (Int_t)std::lround(std::log10(kYScale));
+                g->GetYaxis()->SetTitle(Form("#varepsilon N_{#gamma} / (FOV #Delta#Omega) / 10^{%d} protons  (mm^{-1} sr^{-1})", nExp));
+            }
             g->GetXaxis()->SetTitleSize(0.042);
             g->GetYaxis()->SetTitleSize(0.042);
             g->GetXaxis()->SetLimits(xmin, xmax);
