@@ -30,8 +30,9 @@
 /// shape + line style encode the physics list, so every (energy, physics
 /// list) pair is a unique combination and the two energies read at a glance.
 /// The x-axis (z - d_{BP}, "effective target thickness - proton range") is
-/// fixed to -35..10 mm with a red line at 0 marking the Bragg peak, x/y
-/// gridlines, and a centred nuclear-transition title (e.g.
+/// fixed to -35..10 mm (the 4.4 MeV / 120 deg panel zooms to -12..6 mm to
+/// match the experimental reference) with a red line at 0 marking the Bragg
+/// peak, x/y gridlines, and a centred nuclear-transition title (e.g.
 /// "^{12}C_{4.44 -> g.s.}").
 ///
 /// Each (gamma line, detector angle) combination is drawn on its own
@@ -282,7 +283,9 @@ void DrawOverlayPad(const LineCfg& cfg,
                      const std::vector<std::string>& labels,
                      const std::vector<Int_t>& colors,
                      const std::vector<Int_t>& markers,
-                     const std::vector<Int_t>& lineStyles)
+                     const std::vector<Int_t>& lineStyles,
+                     Double_t xmin,
+                     Double_t xmax)
 {
     gPad->SetLeftMargin(0.15);
     gPad->SetBottomMargin(0.13);
@@ -295,7 +298,7 @@ void DrawOverlayPad(const LineCfg& cfg,
     for (TGraph* g : graphs) {
         for (Int_t i = 0; i < g->GetN(); ++i) {
             Double_t x = g->GetX()[i];
-            if (x < kXmin || x > kXmax) continue;
+            if (x < xmin || x > xmax) continue;
             if (g->GetY()[i] > yMax) yMax = g->GetY()[i];
         }
     }
@@ -331,7 +334,7 @@ void DrawOverlayPad(const LineCfg& cfg,
             g->GetYaxis()->SetTitle("#varepsilon #cdot N_{#gamma} / (FOV #cdot #Delta#Omega)  (proton^{-1} mm^{-1} sr^{-1})");
             g->GetXaxis()->SetTitleSize(0.042);
             g->GetYaxis()->SetTitleSize(0.042);
-            g->GetXaxis()->SetLimits(kXmin, kXmax);
+            g->GetXaxis()->SetLimits(xmin, xmax);
             g->GetYaxis()->SetRangeUser(0., yMax * headroom);
         }
         leg->AddEntry(g, labels[i].c_str(), "lp");
@@ -445,8 +448,18 @@ void compare_pg_profiles(const char* motherDir = "./",
             TCanvas* c = new TCanvas(Form("c_compare_%s_%ddeg", cfg.fileTag, angle),
                                       Form("PG comparison – %s, %d deg", cfg.label, angle),
                                       kPadSize, kPadSize);
+            // The experimental reference zooms the 4.4 MeV / 120 deg panel to
+            // [-12, 6] mm; every other (gamma line, angle) keeps the full
+            // -35..10 mm window (kXmin/kXmax).
+            Double_t padXmin = kXmin, padXmax = kXmax;
+            if (std::string(cfg.dirTag) == "4p4MeV" && angle == 120) {
+                padXmin = -12.;
+                padXmax =   6.;
+            }
+
             c->cd();
-            DrawOverlayPad(cfg, angle, graphs, labels, colors, markers, lineStyles);
+            DrawOverlayPad(cfg, angle, graphs, labels, colors, markers, lineStyles,
+                           padXmin, padXmax);
 
             TDirectory* dAngle = dLines[iLine]->mkdir(Form("%ddeg", angle));
             dAngle->cd();
