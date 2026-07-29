@@ -125,8 +125,8 @@ The homogeneity is estimated with a method combining the two approaches establis
 
 For a perfectly homogeneous emission all of these estimators take their isotropic values, $a_2 = a_4 = 0$, $\mathrm{IU} = \mathrm{CV} = 0$ and $\chi^2/\mathrm{ndf} = 1$; departures from these values, and in particular their localisation in depth, quantify where and how strongly the emission becomes anisotropic. Because Geant4's de-excitation photons are emitted isotropically, the simulated estimators are expected to be consistent with homogeneity within statistics across the plateau, so that any residual structure marks the depths at which the \emph{physical} anisotropy of the 4.44~MeV transition — absent from the simulation but present in the measurement — would be most significant, reinforcing the rationale for the anisotropy correction of Section~\ref{sec:corrections}. The same estimators evaluated for the 9.6~MeV line quantify, in the absence of any measured angular distribution, the depth region in which a future experiment would be most sensitive to a departure from the isotropy assumed here.
 
-\textbf{Legendre coefficients near the Bragg peak.}
-The anisotropy coefficients $a_2$ and $a_4$ of equation~(\ref{eq:legendre}) were extracted from the solid-angle-normalised differential yield $\mathrm{d}N/\mathrm{d}\Omega(\theta)$ at the three depth points closest to the Bragg peak ($d_\mathrm{BP} = 107$~mm for the 130.87~MeV beam and $d_\mathrm{BP} \approx 33$~mm for the 70.54~MeV beam), where the line statistics are highest and the fit is most stable, and the extraction was repeated for the two analysed lines and for each of the three physics lists of Section~\ref{sec:physlists}. Figures~\ref{fig:homog_130} and~\ref{fig:homog_70} show the leading coefficient $a_2$ as a function of $z - d_\mathrm{BP}$ for the two beam energies, with the three physics lists overlaid and the dashed line marking the isotropic expectation $a_2 = 0$; the fitted coefficients at the Bragg peak are collected in Table~\ref{tab:legendre}.
+\textbf{Angular distribution and Legendre fit near the Bragg peak.}
+The anisotropy coefficients $a_2$ and $a_4$ of equation~(\ref{eq:legendre}) were obtained from the solid-angle-normalised differential yield $\mathrm{d}N/\mathrm{d}\Omega(\theta)$ averaged over the three depth points closest to the Bragg peak ($d_\mathrm{BP} = 107$~mm for the 130.87~MeV beam and $d_\mathrm{BP} \approx 33$~mm for the 70.54~MeV beam), where the line statistics are highest and the fit is most stable, separately for the two analysed lines and for each of the three physics lists of Section~\ref{sec:physlists}. Figures~\ref{fig:homog_130} and~\ref{fig:homog_70} show the resulting angular distributions $\mathrm{d}N/\mathrm{d}\Omega(\theta)$ as a function of the polar emission angle, with the three physics lists overlaid and each distribution fitted with the even Legendre expansion of equation~(\ref{eq:legendre}); the fitted $a_2$ and $a_4$ are collected in Table~\ref{tab:legendre}.
 % TODO: fill in the numeric values below and in Table~\ref{tab:legendre} from
 %       angular_homogeneity_summary.csv produced by estimate_pg_homogeneity.C.
 Near the Bragg peak the leading coefficient is small but resolvably non-zero, $a_2 \approx \ldots$, while the fourth-order term remains consistent with zero within its uncertainty, $a_4 \approx \ldots$; the three physics lists agree within their fit uncertainties, indicating that the residual angular non-uniformity is a robust feature of the simulation rather than an artefact of a particular hadronic model.
@@ -136,7 +136,7 @@ Near the Bragg peak the leading coefficient is small but resolvably non-zero, $a
     \subfloat[4.44~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_130MeV_4p44MeV.jpg}}
     \hfill
     \subfloat[9.6~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_130MeV_9p6MeV.jpg}}
-    \caption{Leading Legendre anisotropy coefficient $a_2$ of the prompt-gamma angular distribution as a function of $z - d_\mathrm{BP}$ at the three depths closest to the Bragg peak, for the 130.87~MeV beam: (a) the 4.44~MeV $^{12}$C line and (b) the 9.6~MeV $^{16}$O line. The three curves compare the \texttt{FTFP\_BERT\_HP}, \texttt{QBBC} and \texttt{QGSP\_BIC\_HP\_EMZ} physics lists; the dashed line marks the isotropic value $a_2 = 0$.}
+    \caption{Prompt-gamma emission intensity $\mathrm{d}N/\mathrm{d}\Omega$ as a function of the polar emission angle $\theta$, averaged over the three depths closest to the Bragg peak, for the 130.87~MeV beam: (a) the 4.44~MeV $^{12}$C line and (b) the 9.6~MeV $^{16}$O line. Points are the ring-integrated differential yields (Poisson errors); the solid curves are the even-order Legendre fits $W(\theta)$ of equation~(\ref{eq:legendre}). The three colours compare the \texttt{FTFP\_BERT\_HP}, \texttt{QBBC} and \texttt{QGSP\_BIC\_HP\_EMZ} physics lists.}
     \label{fig:homog_130}
 \end{figure}
 
@@ -151,7 +151,7 @@ Near the Bragg peak the leading coefficient is small but resolvably non-zero, $a
 
 \begin{table}[h]
 \centering
-\caption{Fitted even-order Legendre coefficients $a_2$ and $a_4$ (equation~(\ref{eq:legendre})) of the prompt-gamma angular distribution at the Bragg peak ($z - d_\mathrm{BP} \approx 0$), for both beam energies, both analysed lines and the three physics lists. Uncertainties are the fit uncertainties.}
+\caption{Fitted even-order Legendre coefficients $a_2$ and $a_4$ (equation~(\ref{eq:legendre})) of the prompt-gamma angular distribution, averaged over the three depths closest to the Bragg peak, for both beam energies, both analysed lines and the three physics lists. Uncertainties are the fit uncertainties.}
 \label{tab:legendre}
 \begin{tabular}{lllcc}
 \toprule

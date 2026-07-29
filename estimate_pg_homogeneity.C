@@ -32,17 +32,16 @@
 //                                                                            //
 //   WHAT THIS MACRO PRODUCES                                                  //
 //   ------------------------                                                  //
-//   The homogeneity is evaluated only at the kNearPeak (=3) depths closest    //
-//   to the Bragg peak of each beam energy, where the fit is stable.  For      //
-//   every (beam energy x line) it draws ONE picture in which the three        //
-//   physics lists are overlaid, i.e. exactly four JPGs:                       //
+//   For every (beam energy x line) it draws ONE picture: the prompt-gamma     //
+//   emission intensity  dN/dOmega  versus the polar emission angle theta,     //
+//   averaged over the kNearPeak (=3) depths closest to the Bragg peak, the    //
+//   three physics lists overlaid, each distribution fitted with the even      //
+//   Legendre expansion W(theta).  Exactly four JPGs are written:              //
 //        inhomogeneity_130MeV_4p44MeV.jpg   inhomogeneity_130MeV_9p6MeV.jpg   //
 //        inhomogeneity_70MeV_4p44MeV.jpg    inhomogeneity_70MeV_9p6MeV.jpg    //
-//   plus a summary table angular_homogeneity_summary.csv.  All are written    //
-//   into the mother (input) directory.                                        //
-//                                                                            //
-//   The y-axis quantity is selected by AH::kMetric (default: Legendre a2);    //
-//   change that one line to plot a4, IU, CV or chi2/ndf instead.              //
+//   plus a summary table angular_homogeneity_summary.csv (a2, a4, IU, CV,     //
+//   chi2/ndf per physics list).  All are written into the mother (input)      //
+//   directory.                                                                //
 //                                                                            //
 //   Run:  root -l -b -q 'estimate_pg_homogeneity.C("/path/to/mother")'       //
 //         root -l -b -q  estimate_pg_homogeneity.C        (uses ".")         //
@@ -67,7 +66,6 @@
 #include "TStyle.h"
 #include "TROOT.h"
 #include "TLegend.h"
-#include "TLine.h"
 
 #include <vector>
 #include <string>
@@ -122,11 +120,6 @@ static double BraggPeakDepth(int energyMeV)
     if (energyMeV >=  55 && energyMeV <=  85) return  33.0;   // ~70  MeV
     return -1.0;                                              // unknown
 }
-
-// ---- which inhomogeneity quantity is plotted on the y-axis ------------------
-// Change this single line to plot a different measure.
-enum Metric { kA2, kA4, kIU, kCV, kChi2ndf };
-const Metric kMetric = kA2;
 
 // ---- misc -------------------------------------------------------------------
 const int kNearPeak = 3;   // number of near-Bragg-peak depths analysed
@@ -365,29 +358,33 @@ static DepthResult ComputeMetrics(double z, const AngleYields& d)
     return r;
 }
 
-// Pick out the configured inhomogeneity measure (value, error, validity).
-static void MetricValue(const DepthResult& r, double& v, double& e, bool& ok)
+// Sum the ring line-yields over the near-peak depth files and return the
+// depth-averaged differential angular distribution I(theta) = dN/dOmega, so the
+// homogeneity is characterised over the whole near-Bragg-peak region at once.
+static AngleYields AggregateNearPeak(const std::vector<std::pair<double, TString>>& files,
+                                     const AH::Line& L)
 {
-    switch (AH::kMetric) {
-        case AH::kA4:      v = r.a4;      e = r.a4e; ok = r.fitOK;            break;
-        case AH::kIU:      v = r.iu;      e = r.iue; ok = (r.nAngles >= 2);   break;
-        case AH::kCV:      v = r.cv;      e = r.cve; ok = (r.nAngles >= 2);   break;
-        case AH::kChi2ndf: v = r.chi2ndf; e = 0.0;   ok = r.chiOK;            break;
-        case AH::kA2:
-        default:           v = r.a2;      e = r.a2e; ok = r.fitOK;            break;
+    std::map<double, double> sumI, sumE2;
+    std::map<double, int>    cnt;
+    for (const auto& fp : files) {
+        AngleYields d;
+        if (!ExtractRingYields(fp.second, L, d)) continue;
+        for (size_t i = 0; i < d.theta.size(); ++i) {
+            sumI [d.theta[i]] += d.yield[i];
+            sumE2[d.theta[i]] += d.err[i] * d.err[i];
+            cnt  [d.theta[i]] += 1;
+        }
     }
-}
-
-static const char* MetricAxisTitle()
-{
-    switch (AH::kMetric) {
-        case AH::kA4:      return "Legendre  a_{4}";
-        case AH::kIU:      return "IU = (I_{max}-I_{min})/(I_{max}+I_{min})";
-        case AH::kCV:      return "CV = #sigma_{I} / #LTI#GT";
-        case AH::kChi2ndf: return "#chi^{2} / ndf   (flat hypothesis)";
-        case AH::kA2:
-        default:           return "Legendre  a_{2}";
+    AngleYields out;                       // std::map keeps the rings sorted in theta
+    for (const auto& kv : sumI) {
+        const double th = kv.first;
+        const int    n  = cnt[th];
+        if (n <= 0) continue;
+        out.theta.push_back(th);
+        out.yield.push_back(kv.second / n);              // depth-averaged dN/dOmega
+        out.err.push_back(std::sqrt(sumE2[th]) / n);
     }
+    return out;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -441,84 +438,87 @@ SelectNearPeak(std::vector<std::pair<double, TString>> files, double dRef, int n
 //                                 PLOTTING                                    //
 ////////////////////////////////////////////////////////////////////////////////
 
-// One physics-list series: the inhomogeneity measure at the near-peak depths.
-struct ModelSeries {
-    TString phys;                       // physics-list label
-    std::vector<double> x, y, ey;       // x = z - dRef [mm], y = metric, ey = error
+// One physics list: its near-peak angular distribution and the fitted metrics.
+struct ModelPlot {
+    TString     phys;   // physics-list label
+    AngleYields d;      // averaged differential angular distribution I(theta)
+    DepthResult r;      // Legendre A0/a2/a4 (+ IU, CV, chi2) of that distribution
 };
 
-// Overlay the physics lists of one (beam energy, line) case in a single JPG.
-static void DrawModelComparison(int energy, const AH::Line& L, double dRef,
-                                const std::vector<ModelSeries>& models, const TString& outfile)
+// Overlay the physics lists of one (beam energy, line) case: the prompt-gamma
+// intensity dN/dOmega versus the polar emission angle, each angular distribution
+// fitted with the even Legendre expansion W(theta)=A0[1+a2 P2+a4 P4].  One JPG.
+static void DrawAngularComparison(int energy, const AH::Line& L,
+                                  const std::vector<ModelPlot>& models, const TString& outfile)
 {
     if (models.empty()) return;
 
-    TCanvas c(Form("c_%dMeV_%s", energy, L.name), "inhomogeneity", 900, 650);
+    TCanvas c(Form("c_%dMeV_%s", energy, L.name), "angular", 900, 650);
     c.SetGrid();
     c.SetLeftMargin(0.15);
     c.SetBottomMargin(0.12);
 
-    // ---- common axis ranges (include 0, the isotropic reference) -------------
-    double xmin = 1e30, xmax = -1e30, ymin = 0.0, ymax = 0.0;
-    for (const ModelSeries& m : models)
-        for (size_t i = 0; i < m.x.size(); ++i) {
-            xmin = std::min(xmin, m.x[i]);
-            xmax = std::max(xmax, m.x[i]);
-            ymin = std::min(ymin, m.y[i] - m.ey[i]);
-            ymax = std::max(ymax, m.y[i] + m.ey[i]);
-        }
-    if (xmax <= xmin) { xmin -= 1.0; xmax += 1.0; }
-    const double xpad = 0.15 * (xmax - xmin);
-    const double ypad = 0.15 * (ymax - ymin > 0 ? ymax - ymin : 1.0);
-    xmin -= xpad; xmax += xpad;
-    ymin -= ypad; ymax += ypad;
+    double ymax = 0.0;
+    for (const ModelPlot& m : models)
+        for (size_t i = 0; i < m.d.theta.size(); ++i)
+            ymax = std::max(ymax, m.d.yield[i] + m.d.err[i]);
+    if (ymax <= 0.0) ymax = 1.0;
 
-    const int    cols[] = { kAzure + 2, kRed + 1, kTeal + 2, kViolet + 1, kOrange + 7 };
-    const int    mks[]  = { 20, 21, 22, 33, 29 };
-    const int    nCol   = 5;
+    const int cols[] = { kAzure + 2, kRed + 1, kTeal + 2, kViolet + 1, kOrange + 7 };
+    const int mks[]  = { 20, 21, 22, 33, 29 };
+    const int nCol   = 5;
 
-    TLegend leg(0.16, 0.74, 0.62, 0.88);
+    TLegend leg(0.15, 0.72, 0.72, 0.88);
     leg.SetBorderSize(1);
     leg.SetFillColor(kWhite);
-    leg.SetTextSize(0.030);
-    leg.SetHeader(Form("%d MeV,  %s", energy, L.label));
+    leg.SetTextSize(0.028);
+    leg.SetHeader(Form("%d MeV,  %s   (near Bragg peak)", energy, L.label));
 
-    // ---- draw each physics list ----------------------------------------------
     for (size_t im = 0; im < models.size(); ++im) {
-        const ModelSeries& m = models[im];
-        TGraphErrors* g = new TGraphErrors(static_cast<int>(m.x.size()));
-        for (size_t i = 0; i < m.x.size(); ++i) {
-            g->SetPoint(static_cast<int>(i), m.x[i], m.y[i]);
-            g->SetPointError(static_cast<int>(i), 0.0, m.ey[i]);
-        }
+        const ModelPlot& m = models[im];
+        const int n   = static_cast<int>(m.d.theta.size());
         const int col = cols[im % nCol];
+
+        TGraphErrors* g = new TGraphErrors(n);
+        double tmin = 180.0, tmax = 0.0;
+        for (int i = 0; i < n; ++i) {
+            g->SetPoint(i, m.d.theta[i], m.d.yield[i]);
+            g->SetPointError(i, 0.0, m.d.err[i]);
+            tmin = std::min(tmin, m.d.theta[i]);
+            tmax = std::max(tmax, m.d.theta[i]);
+        }
         g->SetMarkerStyle(mks[im % nCol]);
         g->SetMarkerSize(1.4);
         g->SetMarkerColor(col);
         g->SetLineColor(col);
-        g->SetLineWidth(2);
 
         if (im == 0) {
-            g->SetTitle(Form("Angular inhomogeneity near Bragg peak  -  %d MeV,  %s",
+            g->SetTitle(Form("Prompt-#gamma angular distribution near Bragg peak  -  %d MeV,  %s",
                              energy, L.label));
-            g->Draw("APL");
-            g->GetXaxis()->SetTitle(dRef > 0 ? "z - d_{BP}  [mm]" : "z - z_{ref}  [mm]");
-            g->GetYaxis()->SetTitle(MetricAxisTitle());
+            g->Draw("AP");
+            g->GetXaxis()->SetTitle("Emission angle  #theta  [deg]");
+            g->GetYaxis()->SetTitle("dN/d#Omega   [sr^{-1}]");
             g->GetYaxis()->SetTitleOffset(1.6);
-            g->GetXaxis()->SetLimits(xmin, xmax);
-            g->GetYaxis()->SetRangeUser(ymin, ymax);
+            g->GetXaxis()->SetLimits(0.0, 180.0);
+            g->GetYaxis()->SetRangeUser(0.0, ymax * 1.25);
         } else {
-            g->Draw("PL SAME");
+            g->Draw("P SAME");
         }
-        leg.AddEntry(g, m.phys, "lp");
-    }
 
-    // ---- isotropic reference line (metric = 0) -------------------------------
-    if (ymin < 0.0 && ymax > 0.0) {
-        TLine* l0 = new TLine(xmin, 0.0, xmax, 0.0);
-        l0->SetLineColor(kGray + 2);
-        l0->SetLineStyle(2);
-        l0->Draw();
+        // Even-Legendre fit overlay in the same colour.
+        if (m.r.fitOK && tmax > tmin) {
+            TF1* fit = new TF1(Form("fit_%dMeV_%s_%d", energy, L.name, static_cast<int>(im)),
+                               LegendreW, tmin, tmax, 3);
+            fit->SetParameters(m.r.a0, m.r.a2, m.r.a4);
+            fit->SetLineColor(col);
+            fit->SetLineWidth(2);
+            fit->SetNpx(300);
+            fit->Draw("L SAME");
+        }
+
+        TString disp = m.phys;
+        disp.ReplaceAll("_", " ");          // underscores are TLatex subscripts
+        leg.AddEntry(g, Form("%s   (a_{2}=%.2f, a_{4}=%.2f)", disp.Data(), m.r.a2, m.r.a4), "lp");
     }
 
     leg.Draw();
@@ -570,7 +570,7 @@ void estimate_pg_homogeneity(const char* motherDir = ".")
     }
 
     std::ofstream csv((mother + "/angular_homogeneity_summary.csv").Data());
-    csv << "energy_MeV,line,physics_list,depth,z_minus_dBP,"
+    csv << "energy_MeV,line,physics_list,n_depths,"
         << "a2,a2_err,a4,a4_err,IU,IU_err,CV,CV_err,chi2ndf\n";
 
     int nJpg = 0;
@@ -595,39 +595,36 @@ void estimate_pg_homogeneity(const char* motherDir = ".")
                   << models.size() << " physics lists) ===\n";
 
         for (const auto& L : AH::kLines) {
-            std::vector<ModelSeries> series;
+            std::vector<ModelPlot> plots;
             for (const auto& mdl : models) {
                 const TString& phys = mdl.first;
                 std::vector<std::pair<double, TString>> near =
                     SelectNearPeak(ListDepthFiles(mdl.second), dRef, AH::kNearPeak);
 
-                ModelSeries ms; ms.phys = phys;
-                for (const auto& fp : near) {
-                    AngleYields d;
-                    if (!ExtractRingYields(fp.second, L, d)) continue;
-                    DepthResult r = ComputeMetrics(fp.first, d);
-
-                    double v = 0.0, e = 0.0; bool ok = false;
-                    MetricValue(r, v, e, ok);
-                    if (ok) {
-                        ms.x.push_back(fp.first - dRef);
-                        ms.y.push_back(v);
-                        ms.ey.push_back(e);
-                    }
-                    csv << energy << "," << L.name << "," << phys << ","
-                        << fp.first << "," << (fp.first - dRef) << ","
-                        << r.a2 << "," << r.a2e << "," << r.a4 << "," << r.a4e << ","
-                        << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << ","
-                        << r.chi2ndf << "\n";
+                AngleYields agg = AggregateNearPeak(near, L);
+                if (agg.theta.empty()) {
+                    std::cerr << "   [warn] no ring yields for " << phys
+                              << " / " << L.label << "\n";
+                    continue;
                 }
-                std::cout << "   " << phys << ": " << ms.x.size()
-                          << " near-peak point(s) for " << L.label << "\n";
-                if (!ms.x.empty()) series.push_back(ms);
+                DepthResult r = ComputeMetrics(dRef, agg);
+
+                std::cout << "   " << phys << ": " << near.size() << " depth(s), "
+                          << agg.theta.size() << " rings,  a2=" << r.a2
+                          << "  a4=" << r.a4 << (r.fitOK ? "" : "  [fit skipped]") << "\n";
+
+                csv << energy << "," << L.name << "," << phys << "," << near.size() << ","
+                    << r.a2 << "," << r.a2e << "," << r.a4 << "," << r.a4e << ","
+                    << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << ","
+                    << r.chi2ndf << "\n";
+
+                ModelPlot mp; mp.phys = phys; mp.d = agg; mp.r = r;
+                plots.push_back(mp);
             }
-            if (series.empty()) continue;
+            if (plots.empty()) continue;
 
             const TString out = mother + "/" + Form("inhomogeneity_%dMeV_%s.jpg", energy, L.name);
-            DrawModelComparison(energy, L, dRef, series, out);
+            DrawAngularComparison(energy, L, plots, out);
             std::cout << "   -> " << out << "\n";
             ++nJpg;
         }
@@ -637,6 +634,6 @@ void estimate_pg_homogeneity(const char* motherDir = ".")
 
     std::cout << "\nDone. Wrote " << nJpg << " JPG(s) and angular_homogeneity_summary.csv into '"
               << mother << "/'.\n"
-              << "Metric plotted: " << MetricAxisTitle()
-              << "  (change AH::kMetric to switch).\n" << std::endl;
+              << "Each JPG: dN/dOmega vs emission angle near the Bragg peak, three "
+              << "physics lists, with even-Legendre fits.\n" << std::endl;
 }
