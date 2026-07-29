@@ -1,57 +1,48 @@
 ////////////////////////////////////////////////////////////////////////////////
 //   analyze_angular_homogeneity.C  for Hadron Theraphy (Bragg-Peak project)   //
 //                                                                            //
-//   Depth-resolved angular-homogeneity (isotropy) analysis of prompt-gamma   //
-//   (PG) emission, following the method of the manuscript                    //
+//   Angular-homogeneity (isotropy) analysis of prompt-gamma (PG) emission     //
+//   near the Bragg peak, following the method of the manuscript               //
 //   (main14.tex, Sec. "Angular homogeneity of the prompt-gamma emission").   //
 //                                                                            //
 //   INPUT                                                                     //
 //   -----                                                                     //
-//   A "mother" directory is given as the single argument.  Each simulation   //
-//   configuration (beam energy x physics list) lives in its own              //
-//   sub-directory, e.g.                                                       //
-//        <mother>/prompt_gamma_spectra_130MeV_FTFP_BERT_HP/                   //
-//                     PG_Spectrum_VS_Angle_67.root                            //
-//                     PG_Spectrum_VS_Angle_69.root ...                        //
+//   A "mother" directory is given as the single argument.  Each simulation    //
+//   configuration (beam energy x physics list) lives in its own               //
+//   sub-directory whose name encodes both, e.g.                               //
+//        <mother>/prompt_gamma_spectra_130MeV_FTFP_BERT_HP/                    //
+//                     PG_Spectrum_VS_Angle_105.root                           //
+//                     PG_Spectrum_VS_Angle_107.root ...                       //
 //   The <depth> token in each file name is the degrader thickness [mm].       //
-//   Every sub-directory that contains such files is analysed independently;   //
-//   if the mother directory itself holds the files it is treated as one       //
-//   configuration (so a single folder of example files also works).          //
+//   Inside every file the polar emission is segmented into 30-deg rings        //
+//   stored as full PG energy spectra                                          //
+//        PG_spectra_0_to_30_deg ... PG_spectra_150_to_180_deg,                //
+//   discovered automatically from their names.                                //
 //                                                                            //
-//   Inside every PG_Spectrum_VS_Angle_<depth>.root the polar emission is      //
-//   segmented into 30-deg rings stored as full PG energy spectra             //
-//        PG_spectra_0_to_30_deg, PG_spectra_30_to_60_deg, ... 150_to_180.     //
-//   The rings are discovered automatically from their names.                  //
+//   METHOD (per depth, per line) - manuscript technique                       //
+//   --------------------------------------------------                        //
+//     * differential angular yield  I(theta) = dN/dOmega , with the TRUE      //
+//       ring solid angle  dOmega = 2*pi*(cos theta_lo - cos theta_hi)  and    //
+//       propagated Poisson errors (flat in theta for an isotropic source);    //
+//     * even-order Legendre fit                                               //
+//           W(theta) = A0 [ 1 + a2 P2(cos theta) + a4 P4(cos theta) ]         //
+//       -> anisotropy coefficients a2, a4;                                     //
+//     * model-free indices IU, CV and the reduced chi2/ndf of the flat        //
+//       (isotropic) hypothesis.  For isotropy a2=a4=0, IU=CV=0, chi2/ndf=1.   //
 //                                                                            //
-//   METHOD (per depth, per line)                                             //
-//   ---------------------------                                              //
-//     1. Differential angular yield.  The line intensity N_gamma is obtained //
-//        by integrating each ring spectrum over the line energy window and    //
-//        divided by the TRUE ring solid angle                                 //
-//              dOmega = 2*pi*(cos theta_lo - cos theta_hi),                   //
-//        giving  I(theta) = dN/dOmega , flat in theta for an isotropic        //
-//        source.  Poisson errors sqrt(N) are propagated to each ring.         //
-//     2. Even-order Legendre fit                                              //
-//              W(theta) = A0 [ 1 + a2 P2(cos theta) + a4 P4(cos theta) ]      //
-//        -> anisotropy coefficients a2(z), a4(z) with fit uncertainties.      //
-//     3. Model-free uniformity indices                                        //
-//              IU = (I_max - I_min)/(I_max + I_min)                           //
-//              CV = sigma_I / <I>                                             //
-//        plus the reduced chi2/ndf of the flat (isotropic) hypothesis.        //
-//        IU, CV and chi2/ndf remain defined in the low-yield distal region    //
-//        where the Legendre fit becomes unstable.                            //
+//   WHAT THIS MACRO PRODUCES                                                  //
+//   ------------------------                                                  //
+//   The homogeneity is evaluated only at the kNearPeak (=3) depths closest    //
+//   to the Bragg peak of each beam energy, where the fit is stable.  For      //
+//   every (beam energy x line) it draws ONE picture in which the three        //
+//   physics lists are overlaid, i.e. exactly four JPGs:                       //
+//        inhomogeneity_130MeV_4p44MeV.jpg   inhomogeneity_130MeV_9p6MeV.jpg   //
+//        inhomogeneity_70MeV_4p44MeV.jpg    inhomogeneity_70MeV_9p6MeV.jpg    //
+//   plus a summary table angular_homogeneity_summary.csv.  All are written    //
+//   into the mother (input) directory.                                        //
 //                                                                            //
-//   For isotropic emission a2 = a4 = 0, IU = CV = 0 and chi2/ndf = 1.         //
-//                                                                            //
-//   OUTPUT (per configuration, under AngularHomogeneity_out/<config>/)        //
-//   -----                                                                     //
-//     * a2/a4/IU/CV/chi2ndf_vs_depth_<line>.jpg   (trends vs depth)           //
-//     * angular_dist_<line>_z<depth>.jpg          (I(theta) + Legendre fit)   //
-//     * angular_homogeneity.root                  (TGraphErrors)              //
-//     * angular_homogeneity.csv                   (table)                     //
-//                                                                            //
-//   Manuscript scope: the 4.44 MeV and 9.6 MeV lines are analysed; the        //
-//   6.13 MeV line is intentionally excluded (Geant4 cross-section issue).     //
+//   The y-axis quantity is selected by AH::kMetric (default: Legendre a2);    //
+//   change that one line to plot a4, IU, CV or chi2/ndf instead.              //
 //                                                                            //
 //   Run:  root -l -b -q 'analyze_angular_homogeneity.C("/path/to/mother")'    //
 //         root -l -b -q  analyze_angular_homogeneity.C     (uses ".")         //
@@ -75,11 +66,12 @@
 #include "TMath.h"
 #include "TStyle.h"
 #include "TROOT.h"
-#include "TLatex.h"
 #include "TLegend.h"
+#include "TLine.h"
 
 #include <vector>
 #include <string>
+#include <map>
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
@@ -101,6 +93,11 @@ namespace AH {
 const TString kFilePrefix = "PG_Spectrum_VS_Angle_";
 const TString kFileSuffix = ".root";
 
+// ---- configuration sub-directory names --------------------------------------
+// Parsed as  prompt_gamma_spectra_<energy>MeV_<physicsList>  to recover the
+// beam energy [MeV] and the physics-list label.
+const char*  kConfigScanf = "prompt_gamma_spectra_%dMeV_%127s";
+
 // ---- polar-ring spectra inside each file ------------------------------------
 // Ring histograms are named  PG_spectra_<lo>_to_<hi>_deg  and are discovered by
 // this scanf pattern; <lo>,<hi> are the ring edges in degrees.
@@ -116,10 +113,24 @@ const std::vector<Line> kLines = {
     // 6.13 MeV (16-O) intentionally excluded (see manuscript / benchmark).
 };
 
+// ---- Bragg-peak depth in PMMA per beam energy [mm] --------------------------
+// From the manuscript: 130.87 MeV -> ~107 mm, 70.54 MeV -> ~33 mm.  Only the
+// 3 depths closest to this value are analysed.
+static double BraggPeakDepth(int energyMeV)
+{
+    if (energyMeV >= 115 && energyMeV <= 145) return 107.0;   // ~130 MeV
+    if (energyMeV >=  55 && energyMeV <=  85) return  33.0;   // ~70  MeV
+    return -1.0;                                              // unknown
+}
+
+// ---- which inhomogeneity quantity is plotted on the y-axis ------------------
+// Change this single line to plot a different measure.
+enum Metric { kA2, kA4, kIU, kCV, kChi2ndf };
+const Metric kMetric = kA2;
+
 // ---- misc -------------------------------------------------------------------
-const TString kOutDir    = "AngularHomogeneity_out";
-const TString kDepthAxis = "Degrader thickness z  [mm]";
-const int     kMinAngles = 3;   // minimum rings required for the a2/a4 fit
+const int kNearPeak = 3;   // number of near-Bragg-peak depths analysed
+const int kMinAngles = 3;  // minimum rings required for the a2/a4 fit
 
 } // namespace AH
 
@@ -164,8 +175,7 @@ static double CoeffOfVariation(const std::vector<double>& y)
 }
 
 // Linear (finite-difference) error propagation of a scalar functional f(y)
-// through independent Poisson uncertainties sig[i] on the yields y[i]:
-//   var(f) = sum_i ( df/dy_i )^2 sig_i^2 ,  df/dy_i via central differences.
+// through independent Poisson uncertainties sig[i] on the yields y[i].
 static double PropagateError(const std::function<double(const std::vector<double>&)>& f,
                              const std::vector<double>& y,
                              const std::vector<double>& sig)
@@ -217,7 +227,6 @@ static void IntegrateLine(TH1* spec, double E, double halfWin, double& yield, do
     double e = 0.0;
     const double y = spec->IntegralAndError(b1, b2, e);
     yield = y;
-    // Guard against a null error on a non-empty window (unweighted fills).
     err = (e > 0.0) ? e : (y > 0.0 ? std::sqrt(y) : 0.0);
 }
 
@@ -278,12 +287,12 @@ static bool ExtractRingYields(const TString& path, const AH::Line& L, AngleYield
 
 struct DepthResult {
     double z = 0.0;
-    double a0 = 0.0, a0e = 0.0;   // Legendre normalisation (needed to draw W(theta))
+    double a0 = 0.0, a0e = 0.0;
     double a2 = 0.0, a2e = 0.0;
     double a4 = 0.0, a4e = 0.0;
     double iu = 0.0, iue = 0.0;
     double cv = 0.0, cve = 0.0;
-    double chi2ndf = 0.0;         // reduced chi2 of the flat (isotropic) hypothesis
+    double chi2ndf = 0.0;
     int    nAngles = 0;
     bool   fitOK  = false;
     bool   chiOK  = false;
@@ -320,7 +329,6 @@ static DepthResult ComputeMetrics(double z, const AngleYields& d)
         TF1 fW("fW", LegendreW, amin, amax, 3);
         fW.SetParameters(y0, 0.0, 0.0);
         fW.SetParNames("A0", "a2", "a4");
-        // Poisson weighting comes from the per-point 1/err^2 (default chi2 fit).
         TFitResultPtr res = g.Fit(&fW, "Q S N");
         if (res.Get() && res->IsValid()) {
             r.a0  = res->Parameter(0);  r.a0e = res->ParError(0);
@@ -339,7 +347,6 @@ static DepthResult ComputeMetrics(double z, const AngleYields& d)
     }
 
     // ---- chi2/ndf of the flat (isotropic) hypothesis -------------------------
-    // Weighted mean over rings with a valid error, then reduced chi2 (ndf=n-1).
     if (nFit >= 2) {
         double sw = 0.0, swy = 0.0;
         for (int i = 0; i < nFit; ++i) {
@@ -358,109 +365,37 @@ static DepthResult ComputeMetrics(double z, const AngleYields& d)
     return r;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//                              PLOTTING                                       //
-////////////////////////////////////////////////////////////////////////////////
-
-static void DrawAndSave(TGraphErrors* g, const TString& title, const TString& ytitle,
-                        const TString& outfile, int color)
+// Pick out the configured inhomogeneity measure (value, error, validity).
+static void MetricValue(const DepthResult& r, double& v, double& e, bool& ok)
 {
-    TCanvas c(Form("c_%s", outfile.Data()), title, 900, 650);
-    c.SetGrid();
-    c.SetLeftMargin(0.14);
-    c.SetBottomMargin(0.12);
-
-    g->SetTitle(title);
-    g->GetXaxis()->SetTitle(AH::kDepthAxis);
-    g->GetYaxis()->SetTitle(ytitle);
-    g->GetYaxis()->SetTitleOffset(1.5);
-    g->SetMarkerStyle(20);
-    g->SetMarkerSize(1.1);
-    g->SetMarkerColor(color);
-    g->SetLineColor(color);
-    g->SetLineWidth(2);
-    g->Draw("AP");
-
-    c.SaveAs(outfile);
+    switch (AH::kMetric) {
+        case AH::kA4:      v = r.a4;      e = r.a4e; ok = r.fitOK;            break;
+        case AH::kIU:      v = r.iu;      e = r.iue; ok = (r.nAngles >= 2);   break;
+        case AH::kCV:      v = r.cv;      e = r.cve; ok = (r.nAngles >= 2);   break;
+        case AH::kChi2ndf: v = r.chi2ndf; e = 0.0;   ok = r.chiOK;            break;
+        case AH::kA2:
+        default:           v = r.a2;      e = r.a2e; ok = r.fitOK;            break;
+    }
 }
 
-// Per-depth angular distribution:  differential yield I(theta)=dN/dOmega vs the
-// polar emission angle, with the even-Legendre fit W(theta)=A0[1+a2 P2+a4 P4]
-// overlaid (drawn only when the fit succeeded).  One JPG per line and depth.
-static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
-                                    const AngleYields& d, const TString& outfile)
+static const char* MetricAxisTitle()
 {
-    const int n = static_cast<int>(d.theta.size());
-    if (n < 1) return;
-
-    TCanvas c(Form("cad_%s", outfile.Data()), "AngularDistribution", 900, 650);
-    c.SetGrid();
-    c.SetLeftMargin(0.14);
-    c.SetBottomMargin(0.12);
-
-    TGraphErrors g(n);
-    double ymax = 0.0, amin = d.theta[0], amax = d.theta[0];
-    for (int i = 0; i < n; ++i) {
-        g.SetPoint(i, d.theta[i], d.yield[i]);
-        g.SetPointError(i, 0.0, d.err[i]);
-        ymax = std::max(ymax, d.yield[i] + d.err[i]);
-        amin = std::min(amin, d.theta[i]);
-        amax = std::max(amax, d.theta[i]);
+    switch (AH::kMetric) {
+        case AH::kA4:      return "Legendre  a_{4}";
+        case AH::kIU:      return "IU = (I_{max}-I_{min})/(I_{max}+I_{min})";
+        case AH::kCV:      return "CV = #sigma_{I} / #LTI#GT";
+        case AH::kChi2ndf: return "#chi^{2} / ndf   (flat hypothesis)";
+        case AH::kA2:
+        default:           return "Legendre  a_{2}";
     }
-    g.SetTitle(Form("Differential PG yield vs emission angle  -  %s   (z = %g mm)", L.label, r.z));
-    g.GetXaxis()->SetTitle("Emission angle  #theta  [deg]");
-    g.GetYaxis()->SetTitle("dN/d#Omega  [sr^{-1}]");
-    g.GetYaxis()->SetTitleOffset(1.5);
-    if (ymax > 0.0) g.GetYaxis()->SetRangeUser(0.0, ymax * 1.25);
-    g.SetMarkerStyle(20);
-    g.SetMarkerSize(1.1);
-    g.SetMarkerColor(kAzure + 2);
-    g.SetLineColor(kAzure + 2);
-    g.SetLineWidth(2);
-    g.Draw("AP");
-
-    TLegend leg(0.58, 0.74, 0.88, 0.88);
-    leg.SetBorderSize(1);
-    leg.SetFillColor(kWhite);
-    leg.SetTextSize(0.030);
-    leg.AddEntry(&g, "dN/d#Omega #pm stat.", "lp");
-
-    // Even-Legendre fit overlay (same model used to extract a2/a4).
-    TF1* fit = nullptr;
-    if (r.fitOK && amax > amin) {
-        fit = new TF1(Form("fWdraw_%s", outfile.Data()), LegendreW, amin, amax, 3);
-        fit->SetParameters(r.a0, r.a2, r.a4);
-        fit->SetLineColor(kRed + 1);
-        fit->SetLineWidth(2);
-        fit->SetNpx(400);
-        fit->Draw("L SAME");
-        leg.AddEntry(fit, "A_{0}[1+a_{2}P_{2}+a_{4}P_{4}]", "l");
-    }
-    leg.Draw();
-
-    // Numeric summary of the homogeneity metrics for this depth.
-    TLatex tx;
-    tx.SetNDC();
-    tx.SetTextSize(0.033);
-    double yline = 0.86;
-    if (r.fitOK) {
-        tx.DrawLatex(0.17, yline, Form("a_{2} = %.3f #pm %.3f", r.a2, r.a2e)); yline -= 0.05;
-        tx.DrawLatex(0.17, yline, Form("a_{4} = %.3f #pm %.3f", r.a4, r.a4e)); yline -= 0.05;
-    }
-    tx.DrawLatex(0.17, yline, Form("IU = %.3f   CV = %.3f", r.iu, r.cv));        yline -= 0.05;
-    if (r.chiOK)
-        tx.DrawLatex(0.17, yline, Form("#chi^{2}/ndf = %.2f", r.chi2ndf));
-
-    gPad->RedrawAxis();
-    c.SaveAs(outfile);
-    delete fit;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//                        PER-CONFIGURATION PROCESSING                         //
+//                     DIRECTORY / DEPTH-FILE DISCOVERY                         //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Discover the PG_Spectrum_VS_Angle_<depth>.root files in one directory.
+// Discover the PG_Spectrum_VS_Angle_<depth>.root files in one directory,
+// sorted by depth.
 static std::vector<std::pair<double, TString>> ListDepthFiles(const TString& dirPath)
 {
     std::vector<std::pair<double, TString>> files;
@@ -476,10 +411,7 @@ static std::vector<std::pair<double, TString>> ListDepthFiles(const TString& dir
         tag.Remove(0, AH::kFilePrefix.Length());
         tag.Remove(tag.Length() - AH::kFileSuffix.Length(), AH::kFileSuffix.Length());
         double z = 0.0;
-        if (!ParseLeadingNumber(tag, z)) {
-            std::cerr << "  [warn] cannot parse depth from '" << name << "', skipped\n";
-            continue;
-        }
+        if (!ParseLeadingNumber(tag, z)) continue;
         files.emplace_back(z, dirPath + "/" + name);
     }
     std::sort(files.begin(), files.end(),
@@ -489,100 +421,109 @@ static std::vector<std::pair<double, TString>> ListDepthFiles(const TString& dir
     return files;
 }
 
-// Analyse one configuration (one directory holding a depth scan).
-static void ProcessConfig(const TString& dirPath, const TString& label)
+// Keep the kNearPeak depths closest to dRef, returned sorted by depth.
+static std::vector<std::pair<double, TString>>
+SelectNearPeak(std::vector<std::pair<double, TString>> files, double dRef, int nWant)
 {
-    std::vector<std::pair<double, TString>> files = ListDepthFiles(dirPath);
-    if (files.empty()) return;
+    std::sort(files.begin(), files.end(),
+              [dRef](const std::pair<double, TString>& a, const std::pair<double, TString>& b) {
+                  return std::fabs(a.first - dRef) < std::fabs(b.first - dRef);
+              });
+    if (static_cast<int>(files.size()) > nWant) files.resize(nWant);
+    std::sort(files.begin(), files.end(),
+              [](const std::pair<double, TString>& a, const std::pair<double, TString>& b) {
+                  return a.first < b.first;
+              });
+    return files;
+}
 
-    const TString outDir = AH::kOutDir + "/" + label;
-    gSystem->mkdir(outDir, kTRUE);
+////////////////////////////////////////////////////////////////////////////////
+//                                 PLOTTING                                    //
+////////////////////////////////////////////////////////////////////////////////
 
-    std::cout << "\n############################################################\n"
-              << "# Configuration: " << label << "   (" << files.size() << " depths)\n"
-              << "############################################################\n";
+// One physics-list series: the inhomogeneity measure at the near-peak depths.
+struct ModelSeries {
+    TString phys;                       // physics-list label
+    std::vector<double> x, y, ey;       // x = z - dRef [mm], y = metric, ey = error
+};
 
-    TFile fout(outDir + "/angular_homogeneity.root", "RECREATE");
-    std::ofstream csv((outDir + "/angular_homogeneity.csv").Data());
-    csv << "line,depth,n_rings,a2,a2_err,a4,a4_err,IU,IU_err,CV,CV_err,chi2ndf\n";
+// Overlay the physics lists of one (beam energy, line) case in a single JPG.
+static void DrawModelComparison(int energy, const AH::Line& L, double dRef,
+                                const std::vector<ModelSeries>& models, const TString& outfile)
+{
+    if (models.empty()) return;
 
-    for (const auto& L : AH::kLines) {
-        std::cout << "\n=== Line " << L.label << " ("
-                  << L.E << " +/- " << L.halfWin << " MeV) ===\n";
+    TCanvas c(Form("c_%dMeV_%s", energy, L.name), "inhomogeneity", 900, 650);
+    c.SetGrid();
+    c.SetLeftMargin(0.15);
+    c.SetBottomMargin(0.12);
 
-        std::vector<DepthResult> R;
-        for (const auto& fp : files) {
-            AngleYields d;
-            if (!ExtractRingYields(fp.second, L, d)) {
-                std::cerr << "  [warn] no ring yields for " << L.label
-                          << " in " << fp.second << "\n";
-                continue;
-            }
-            DepthResult r = ComputeMetrics(fp.first, d);
-            R.push_back(r);
-            std::cout << "  z=" << r.z << "  nRings=" << r.nAngles
-                      << "  a2=" << r.a2 << "+/-" << r.a2e
-                      << "  a4=" << r.a4 << "+/-" << r.a4e
-                      << "  IU=" << r.iu
-                      << "  CV=" << r.cv
-                      << "  chi2/ndf=" << r.chi2ndf
-                      << (r.fitOK ? "" : "  [fit skipped]") << "\n";
-
-            csv << L.name << "," << r.z << "," << r.nAngles << ","
-                << r.a2 << "," << r.a2e << "," << r.a4 << "," << r.a4e << ","
-                << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << ","
-                << r.chi2ndf << "\n";
-
-            // JPG of the differential angular distribution + Legendre fit.
-            DrawAngularDistribution(L, r, d,
-                outDir + "/angular_dist_" + L.name + Form("_z%g", r.z) + ".jpg");
+    // ---- common axis ranges (include 0, the isotropic reference) -------------
+    double xmin = 1e30, xmax = -1e30, ymin = 0.0, ymax = 0.0;
+    for (const ModelSeries& m : models)
+        for (size_t i = 0; i < m.x.size(); ++i) {
+            xmin = std::min(xmin, m.x[i]);
+            xmax = std::max(xmax, m.x[i]);
+            ymin = std::min(ymin, m.y[i] - m.ey[i]);
+            ymax = std::max(ymax, m.y[i] + m.ey[i]);
         }
-        if (R.empty()) continue;
+    if (xmax <= xmin) { xmin -= 1.0; xmax += 1.0; }
+    const double xpad = 0.15 * (xmax - xmin);
+    const double ypad = 0.15 * (ymax - ymin > 0 ? ymax - ymin : 1.0);
+    xmin -= xpad; xmax += xpad;
+    ymin -= ypad; ymax += ypad;
 
-        // Build the depth-trend graphs.
-        TGraphErrors gA2, gA4, gIU, gCV, gChi;
-        int nFit = 0, nAll = 0, nChi = 0;
-        for (const auto& r : R) {
-            if (r.fitOK) {
-                gA2.SetPoint(nFit, r.z, r.a2);  gA2.SetPointError(nFit, 0.0, r.a2e);
-                gA4.SetPoint(nFit, r.z, r.a4);  gA4.SetPointError(nFit, 0.0, r.a4e);
-                ++nFit;
-            }
-            gIU.SetPoint(nAll, r.z, r.iu);  gIU.SetPointError(nAll, 0.0, r.iue);
-            gCV.SetPoint(nAll, r.z, r.cv);  gCV.SetPointError(nAll, 0.0, r.cve);
-            ++nAll;
-            if (r.chiOK) { gChi.SetPoint(nChi, r.z, r.chi2ndf); gChi.SetPointError(nChi, 0.0, 0.0); ++nChi; }
+    const int    cols[] = { kAzure + 2, kRed + 1, kTeal + 2, kViolet + 1, kOrange + 7 };
+    const int    mks[]  = { 20, 21, 22, 33, 29 };
+    const int    nCol   = 5;
+
+    TLegend leg(0.16, 0.74, 0.62, 0.88);
+    leg.SetBorderSize(1);
+    leg.SetFillColor(kWhite);
+    leg.SetTextSize(0.030);
+    leg.SetHeader(Form("%d MeV,  %s", energy, L.label));
+
+    // ---- draw each physics list ----------------------------------------------
+    for (size_t im = 0; im < models.size(); ++im) {
+        const ModelSeries& m = models[im];
+        TGraphErrors* g = new TGraphErrors(static_cast<int>(m.x.size()));
+        for (size_t i = 0; i < m.x.size(); ++i) {
+            g->SetPoint(static_cast<int>(i), m.x[i], m.y[i]);
+            g->SetPointError(static_cast<int>(i), 0.0, m.ey[i]);
         }
+        const int col = cols[im % nCol];
+        g->SetMarkerStyle(mks[im % nCol]);
+        g->SetMarkerSize(1.4);
+        g->SetMarkerColor(col);
+        g->SetLineColor(col);
+        g->SetLineWidth(2);
 
-        const TString tag = L.name;
-        gA2.SetName(Form("a2_vs_depth_%s", tag.Data()));
-        gA4.SetName(Form("a4_vs_depth_%s", tag.Data()));
-        gIU.SetName(Form("IU_vs_depth_%s", tag.Data()));
-        gCV.SetName(Form("CV_vs_depth_%s", tag.Data()));
-        gChi.SetName(Form("chi2ndf_vs_depth_%s", tag.Data()));
-
-        DrawAndSave(&gA2, Form("Legendre a_{2}(z)  -  %s  [%s]", L.label, label.Data()), "a_{2}",
-                    outDir + "/a2_vs_depth_" + tag + ".jpg", kAzure + 2);
-        DrawAndSave(&gA4, Form("Legendre a_{4}(z)  -  %s  [%s]", L.label, label.Data()), "a_{4}",
-                    outDir + "/a4_vs_depth_" + tag + ".jpg", kViolet + 1);
-        DrawAndSave(&gIU, Form("Integral uniformity IU(z)  -  %s  [%s]", L.label, label.Data()),
-                    "IU = (I_{max}-I_{min})/(I_{max}+I_{min})",
-                    outDir + "/IU_vs_depth_" + tag + ".jpg", kOrange + 7);
-        DrawAndSave(&gCV, Form("Coefficient of variation CV(z)  -  %s  [%s]", L.label, label.Data()),
-                    "CV = #sigma_{I} / #LTI#GT",
-                    outDir + "/CV_vs_depth_" + tag + ".jpg", kTeal + 2);
-        DrawAndSave(&gChi, Form("Flat-hypothesis #chi^{2}/ndf(z)  -  %s  [%s]", L.label, label.Data()),
-                    "#chi^{2} / ndf",
-                    outDir + "/chi2ndf_vs_depth_" + tag + ".jpg", kGray + 2);
-
-        fout.cd();
-        gA2.Write(); gA4.Write(); gIU.Write(); gCV.Write(); gChi.Write();
+        if (im == 0) {
+            g->SetTitle(Form("Angular inhomogeneity near Bragg peak  -  %d MeV,  %s",
+                             energy, L.label));
+            g->Draw("APL");
+            g->GetXaxis()->SetTitle(dRef > 0 ? "z - d_{BP}  [mm]" : "z - z_{ref}  [mm]");
+            g->GetYaxis()->SetTitle(MetricAxisTitle());
+            g->GetYaxis()->SetTitleOffset(1.6);
+            g->GetXaxis()->SetLimits(xmin, xmax);
+            g->GetYaxis()->SetRangeUser(ymin, ymax);
+        } else {
+            g->Draw("PL SAME");
+        }
+        leg.AddEntry(g, m.phys, "lp");
     }
 
-    csv.close();
-    fout.Close();
+    // ---- isotropic reference line (metric = 0) -------------------------------
+    if (ymin < 0.0 && ymax > 0.0) {
+        TLine* l0 = new TLine(xmin, 0.0, xmax, 0.0);
+        l0->SetLineColor(kGray + 2);
+        l0->SetLineStyle(2);
+        l0->Draw();
+    }
 
-    std::cout << "\nWrote outputs to '" << outDir << "/'\n";
+    leg.Draw();
+    gPad->RedrawAxis();
+    c.SaveAs(outfile);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -596,21 +537,11 @@ void analyze_angular_homogeneity(const char* motherDir = ".")
     gStyle->SetOptFit(0);
     gStyle->SetTitleFontSize(0.045);
 
-    gSystem->mkdir(AH::kOutDir, kTRUE);
-
     const TString mother = motherDir;
 
-    // ---- collect configurations ----------------------------------------------
-    // A "configuration" is any directory that directly contains depth files:
-    // each sub-directory of <mother>, and <mother> itself as a fallback.
-    std::vector<std::pair<TString, TString>> configs;   // (label, dirPath)
-
-    if (!ListDepthFiles(mother).empty()) {
-        TString base = gSystem->BaseName(mother);
-        if (base == "" || base == ".") base = "root";
-        configs.emplace_back(base, mother);
-    }
-
+    // ---- group configuration sub-directories by beam energy ------------------
+    //   energy [MeV]  ->  list of (physicsList, dirPath)
+    std::map<int, std::vector<std::pair<TString, TString>>> byEnergy;
     {
         TSystemDirectory dir(mother, mother);
         if (TList* list = dir.GetListOfFiles()) {
@@ -619,34 +550,93 @@ void analyze_angular_homogeneity(const char* motherDir = ".")
                 if (!sf->IsDirectory()) continue;
                 TString name = sf->GetName();
                 if (name == "." || name == "..") continue;
-                TString sub = mother + "/" + name;
-                if (!ListDepthFiles(sub).empty())
-                    configs.emplace_back(name, sub);
+                int energy = 0;
+                char phys[128] = { 0 };
+                if (std::sscanf(name.Data(), AH::kConfigScanf, &energy, phys) != 2) continue;
+                const TString sub = mother + "/" + name;
+                if (ListDepthFiles(sub).empty()) continue;
+                byEnergy[energy].emplace_back(TString(phys), sub);
             }
         }
     }
 
-    if (configs.empty()) {
-        std::cerr << "\nNo '" << AH::kFilePrefix << "*<depth>" << AH::kFileSuffix
-                  << "' files found in '" << mother << "' or its sub-directories.\n"
+    if (byEnergy.empty()) {
+        std::cerr << "\nNo 'prompt_gamma_spectra_<energy>MeV_<physics>' sub-directories with "
+                  << AH::kFilePrefix << "*" << AH::kFileSuffix << " files found under '"
+                  << mother << "'.\n"
                   << "Usage:  root -l -b -q 'analyze_angular_homogeneity.C(\"/path/to/mother\")'\n"
-                  << "where <mother> holds the  prompt_gamma_spectra_*  sub-directories.\n"
                   << std::endl;
         return;
     }
 
-    std::sort(configs.begin(), configs.end(),
-              [](const std::pair<TString, TString>& a, const std::pair<TString, TString>& b) {
-                  return a.first < b.first;
-              });
+    std::ofstream csv((mother + "/angular_homogeneity_summary.csv").Data());
+    csv << "energy_MeV,line,physics_list,depth,z_minus_dBP,"
+        << "a2,a2_err,a4,a4_err,IU,IU_err,CV,CV_err,chi2ndf\n";
 
-    std::cout << "\nFound " << configs.size() << " configuration(s) under '" << mother << "':\n";
-    for (const auto& c : configs) std::cout << "   " << c.first << "   (" << c.second << ")\n";
+    int nJpg = 0;
+    for (auto& en : byEnergy) {
+        const int energy = en.first;
+        std::vector<std::pair<TString, TString>>& models = en.second;
+        std::sort(models.begin(), models.end(),
+                  [](const std::pair<TString, TString>& a, const std::pair<TString, TString>& b) {
+                      return a.first < b.first;
+                  });
 
-    for (const auto& c : configs) ProcessConfig(c.second, c.first);
+        // Bragg-peak depth for this energy (fallback: median of the first scan).
+        double dRef = AH::BraggPeakDepth(energy);
+        if (dRef <= 0.0 && !models.empty()) {
+            std::vector<std::pair<double, TString>> f0 = ListDepthFiles(models[0].second);
+            if (!f0.empty()) dRef = f0[f0.size() / 2].first;
+            std::cerr << "  [warn] unknown Bragg-peak depth for " << energy
+                      << " MeV; using z_ref = " << dRef << " mm\n";
+        }
 
-    std::cout << "\nDone. All outputs under '" << AH::kOutDir << "/<config>/':\n"
-              << "   a2/a4/IU/CV/chi2ndf_vs_depth_<line>.jpg  (trends vs depth)\n"
-              << "   angular_dist_<line>_z<depth>.jpg         (dN/dOmega + Legendre fit)\n"
-              << "   angular_homogeneity.root / .csv\n" << std::endl;
+        std::cout << "\n=== " << energy << " MeV   (Bragg peak z = " << dRef << " mm,  "
+                  << models.size() << " physics lists) ===\n";
+
+        for (const auto& L : AH::kLines) {
+            std::vector<ModelSeries> series;
+            for (const auto& mdl : models) {
+                const TString& phys = mdl.first;
+                std::vector<std::pair<double, TString>> near =
+                    SelectNearPeak(ListDepthFiles(mdl.second), dRef, AH::kNearPeak);
+
+                ModelSeries ms; ms.phys = phys;
+                for (const auto& fp : near) {
+                    AngleYields d;
+                    if (!ExtractRingYields(fp.second, L, d)) continue;
+                    DepthResult r = ComputeMetrics(fp.first, d);
+
+                    double v = 0.0, e = 0.0; bool ok = false;
+                    MetricValue(r, v, e, ok);
+                    if (ok) {
+                        ms.x.push_back(fp.first - dRef);
+                        ms.y.push_back(v);
+                        ms.ey.push_back(e);
+                    }
+                    csv << energy << "," << L.name << "," << phys << ","
+                        << fp.first << "," << (fp.first - dRef) << ","
+                        << r.a2 << "," << r.a2e << "," << r.a4 << "," << r.a4e << ","
+                        << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << ","
+                        << r.chi2ndf << "\n";
+                }
+                std::cout << "   " << phys << ": " << ms.x.size()
+                          << " near-peak point(s) for " << L.label << "\n";
+                if (!ms.x.empty()) series.push_back(ms);
+            }
+            if (series.empty()) continue;
+
+            const TString out = mother + "/" + Form("inhomogeneity_%dMeV_%s.jpg", energy, L.name);
+            DrawModelComparison(energy, L, dRef, series, out);
+            std::cout << "   -> " << out << "\n";
+            ++nJpg;
+        }
+    }
+
+    csv.close();
+
+    std::cout << "\nDone. Wrote " << nJpg << " JPG(s) and angular_homogeneity_summary.csv into '"
+              << mother << "/'.\n"
+              << "Metric plotted: " << MetricAxisTitle()
+              << "  (change AH::kMetric to switch).\n" << std::endl;
 }
