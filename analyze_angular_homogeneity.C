@@ -1,39 +1,66 @@
 ////////////////////////////////////////////////////////////////////////////////
 //   analyze_angular_homogeneity.C  for Hadron Theraphy (Bragg-Peak project)   //
 //                                                                            //
-//   Depth-resolved angular-homogeneity analysis of prompt-gamma (PG)         //
-//   emission.  For every phantom depth z the macro reads the per-angle PG    //
-//   energy spectra stored in  PG_Spectrum_VS_Angle_<depth>.root  and, for    //
-//   each analysed gamma line, quantifies how uniform the PG yield is over    //
-//   the polar emission angle theta by:                                       //
+//   Depth-resolved angular-homogeneity (isotropy) analysis of prompt-gamma   //
+//   (PG) emission, following the method of the manuscript                    //
+//   (main14.tex, Sec. "Angular homogeneity of the prompt-gamma emission").   //
 //                                                                            //
-//     * a Poisson-weighted even Legendre expansion                           //
-//           W(theta) = a0 [ 1 + a2 P2(cos theta) + a4 P4(cos theta) ]        //
-//       -> anisotropy coefficients a2(z), a4(z) with fit uncertainties;      //
-//     * two model-free uniformity indices                                    //
-//           IU(z) = (Ymax - Ymin) / (Ymax + Ymin)   (integral uniformity)    //
-//           CV(z) = sigma_Y / <Y>                    (coefficient of var.)    //
-//       with finite-difference (linear) error propagation from the           //
-//       Poisson yield uncertainties.                                         //
+//   INPUT                                                                     //
+//   -----                                                                     //
+//   A "mother" directory is given as the single argument.  Each simulation   //
+//   configuration (beam energy x physics list) lives in its own              //
+//   sub-directory, e.g.                                                       //
+//        <mother>/prompt_gamma_spectra_130MeV_FTFP_BERT_HP/                   //
+//                     PG_Spectrum_VS_Angle_67.root                            //
+//                     PG_Spectrum_VS_Angle_69.root ...                        //
+//   The <depth> token in each file name is the degrader thickness [mm].       //
+//   Every sub-directory that contains such files is analysed independently;   //
+//   if the mother directory itself holds the files it is treated as one       //
+//   configuration (so a single folder of example files also works).          //
 //                                                                            //
-//   Every angle present in each input file is discovered automatically       //
-//   (not just the 90 deg / 120 deg detectors used by the depth-profile       //
-//   macros).  Results are written as JPG plots (both the raw yield-vs-angle  //
-//   distribution with its Legendre fit for every depth, and the a2/a4/IU/CV  //
-//   trends vs depth), TGraphErrors in a ROOT summary file and a CSV table.   //
+//   Inside every PG_Spectrum_VS_Angle_<depth>.root the polar emission is      //
+//   segmented into 30-deg rings stored as full PG energy spectra             //
+//        PG_spectra_0_to_30_deg, PG_spectra_30_to_60_deg, ... 150_to_180.     //
+//   The rings are discovered automatically from their names.                  //
 //                                                                            //
-//   Manuscript scope: the 4.44 MeV and 9.6 MeV lines are analysed; the       //
-//   6.13 MeV line is intentionally excluded (same rationale as the           //
-//   depth-profile benchmark).                                                //
+//   METHOD (per depth, per line)                                             //
+//   ---------------------------                                              //
+//     1. Differential angular yield.  The line intensity N_gamma is obtained //
+//        by integrating each ring spectrum over the line energy window and    //
+//        divided by the TRUE ring solid angle                                 //
+//              dOmega = 2*pi*(cos theta_lo - cos theta_hi),                   //
+//        giving  I(theta) = dN/dOmega , flat in theta for an isotropic        //
+//        source.  Poisson errors sqrt(N) are propagated to each ring.         //
+//     2. Even-order Legendre fit                                              //
+//              W(theta) = A0 [ 1 + a2 P2(cos theta) + a4 P4(cos theta) ]      //
+//        -> anisotropy coefficients a2(z), a4(z) with fit uncertainties.      //
+//     3. Model-free uniformity indices                                        //
+//              IU = (I_max - I_min)/(I_max + I_min)                           //
+//              CV = sigma_I / <I>                                             //
+//        plus the reduced chi2/ndf of the flat (isotropic) hypothesis.        //
+//        IU, CV and chi2/ndf remain defined in the low-yield distal region    //
+//        where the Legendre fit becomes unstable.                            //
 //                                                                            //
-//   Run:   root -l -b -q analyze_angular_homogeneity.C                       //
+//   For isotropic emission a2 = a4 = 0, IU = CV = 0 and chi2/ndf = 1.         //
 //                                                                            //
-//              - 26. Jul. 2026.  Bragg-Peak / HadronTheraphy1                //
+//   OUTPUT (per configuration, under AngularHomogeneity_out/<config>/)        //
+//   -----                                                                     //
+//     * a2/a4/IU/CV/chi2ndf_vs_depth_<line>.jpg   (trends vs depth)           //
+//     * angular_dist_<line>_z<depth>.jpg          (I(theta) + Legendre fit)   //
+//     * angular_homogeneity.root                  (TGraphErrors)              //
+//     * angular_homogeneity.csv                   (table)                     //
+//                                                                            //
+//   Manuscript scope: the 4.44 MeV and 9.6 MeV lines are analysed; the        //
+//   6.13 MeV line is intentionally excluded (Geant4 cross-section issue).     //
+//                                                                            //
+//   Run:  root -l -b -q 'analyze_angular_homogeneity.C("/path/to/mother")'    //
+//         root -l -b -q  analyze_angular_homogeneity.C     (uses ".")         //
+//                                                                            //
+//              - 29. Jul. 2026.  Bragg-Peak / HadronTheraphy1                 //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "TFile.h"
 #include "TH1.h"
-#include "TH2.h"
 #include "TKey.h"
 #include "TList.h"
 #include "TGraphErrors.h"
@@ -53,10 +80,10 @@
 
 #include <vector>
 #include <string>
-#include <map>
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <algorithm>
 #include <functional>
@@ -68,31 +95,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 namespace AH {
 
-// ---- input files ------------------------------------------------------------
-// Files are auto-discovered as  <kInputDir>/<kFilePrefix><depth><kFileSuffix>
+// ---- input depth files ------------------------------------------------------
+// Files are auto-discovered as  <cfgDir>/<kFilePrefix><depth><kFileSuffix>
 // and the <depth> part of the name is parsed into the numeric depth axis.
-const TString kInputDir   = ".";
 const TString kFilePrefix = "PG_Spectrum_VS_Angle_";
 const TString kFileSuffix = ".root";
 
-// ---- how the per-angle PG spectra are stored inside each file ---------------
-// Primary layout: a single TH2 with the emission-angle bin on X and the PG
-// energy [MeV] on Y (the natural generalisation of the simulation histogram
-// "Angular_dist_of_Prompt_Gamma_EDep_on_SD").  A per-angle TH1 layout is used
-// as an automatic fallback (see kTH1AngleToken).
-const TString kAngleEnergyTH2 = "Angular_dist_of_Prompt_Gamma_EDep_on_SD";
-
-// X-axis meaning of the primary TH2:
-//   kXAxisInDegrees == false : X is the detector-division index (HT1 spherical
-//                              detector).  theta = binCentre * kThetaSpanDeg / Nx
-//   kXAxisInDegrees == true  : X-axis bin centres already are angles in degrees.
-const bool   kXAxisInDegrees = false;
-const double kThetaSpanDeg   = 180.0;   // polar coverage of the detector [deg]
-
-// Fallback per-angle TH1 layout: any TH1 whose name contains this token is
-// treated as one angle's spectrum, with the number just before the token read
-// as the angle in degrees, e.g. "PG_Spectrum_90deg", "spectrum_120_deg".
-const TString kTH1AngleToken = "deg";
+// ---- polar-ring spectra inside each file ------------------------------------
+// Ring histograms are named  PG_spectra_<lo>_to_<hi>_deg  and are discovered by
+// this scanf pattern; <lo>,<hi> are the ring edges in degrees.
+const char*  kRingScanf = "PG_spectra_%d_to_%d_deg";
 
 // ---- prompt-gamma lines analysed --------------------------------------------
 // name : file/label-safe tag        E : line energy [MeV]
@@ -101,13 +113,13 @@ struct Line { const char* name; const char* label; double E; double halfWin; };
 const std::vector<Line> kLines = {
     { "4p44MeV", "4.44 MeV", 4.44, 0.20 },
     { "9p6MeV",  "9.6 MeV",  9.60, 0.30 },
-    // 6.13 MeV (16-O) intentionally excluded (see depth-profile benchmark).
+    // 6.13 MeV (16-O) intentionally excluded (see manuscript / benchmark).
 };
 
 // ---- misc -------------------------------------------------------------------
-const TString kOutDir      = "AngularHomogeneity_out";
-const TString kDepthAxis   = "Depth z  [file tag]";
-const int     kMinAngles   = 3;   // minimum angles required for the a2/a4 fit
+const TString kOutDir    = "AngularHomogeneity_out";
+const TString kDepthAxis = "Degrader thickness z  [mm]";
+const int     kMinAngles = 3;   // minimum rings required for the a2/a4 fit
 
 } // namespace AH
 
@@ -186,15 +198,15 @@ static bool ParseLeadingNumber(const TString& s, double& out)
 
 ////////////////////////////////////////////////////////////////////////////////
 //                    PER-DEPTH DATA EXTRACTION (I/O ADAPTER)                   //
-//   This is the only section tied to how the PG-vs-angle files are laid out.  //
-//   It returns, for one analysed line, the angles [deg] and their yields with //
-//   Poisson uncertainties.                                                    //
+//   Reads the polar-ring spectra of one depth file and returns, for one       //
+//   analysed line, the ring angles [deg] and the solid-angle-normalised       //
+//   differential yield  I(theta) = dN/dOmega  with Poisson uncertainties.     //
 ////////////////////////////////////////////////////////////////////////////////
 
 struct AngleYields {
-    std::vector<double> theta;   // emission angle [deg]
-    std::vector<double> yield;   // integrated line yield
-    std::vector<double> err;     // Poisson uncertainty on the yield
+    std::vector<double> theta;   // ring-centre emission angle [deg]
+    std::vector<double> yield;   // differential line yield  dN/dOmega [1/sr]
+    std::vector<double> err;     // Poisson uncertainty on the differential yield
 };
 
 // Integrate a 1-D energy spectrum in [E-halfWin, E+halfWin] with its error.
@@ -209,70 +221,55 @@ static void IntegrateLine(TH1* spec, double E, double halfWin, double& yield, do
     err = (e > 0.0) ? e : (y > 0.0 ? std::sqrt(y) : 0.0);
 }
 
-// Try the primary TH2(angle, energy) layout.
-static bool ExtractFromTH2(TFile* f, const AH::Line& L, AngleYields& out)
-{
-    TH2* h2 = dynamic_cast<TH2*>(f->Get(AH::kAngleEnergyTH2));
-    if (!h2) return false;
+// One discovered polar ring.
+struct Ring { int lo; int hi; TString name; };
 
-    const int nx = h2->GetNbinsX();
-    const double scale = AH::kXAxisInDegrees ? 1.0 : (AH::kThetaSpanDeg / nx);
-
-    for (int ix = 1; ix <= nx; ++ix) {
-        TH1* proj = h2->ProjectionY(Form("_py_%s_%d", L.name, ix), ix, ix);
-        double y = 0.0, e = 0.0;
-        IntegrateLine(proj, L.E, L.halfWin, y, e);
-        delete proj;
-        if (y <= 0.0) continue;                       // no signal at this angle
-        out.theta.push_back(h2->GetXaxis()->GetBinCenter(ix) * scale);
-        out.yield.push_back(y);
-        out.err.push_back(e > 0.0 ? e : std::sqrt(y));
-    }
-    return !out.theta.empty();
-}
-
-// Fallback: one TH1 spectrum per angle, angle encoded in the histogram name.
-static bool ExtractFromTH1s(TFile* f, const AH::Line& L, AngleYields& out)
-{
-    TList* keys = f->GetListOfKeys();
-    if (!keys) return false;
-
-    std::map<double, std::pair<double, double>> byAngle;   // theta -> (yield, err)
-    TIter next(keys);
-    while (TKey* k = static_cast<TKey*>(next())) {
-        const TString cname = k->GetClassName();
-        if (!cname.BeginsWith("TH1")) continue;
-        TString hname = k->GetName();
-        const Ssiz_t tok = hname.Index(AH::kTH1AngleToken, 0, TString::kIgnoreCase);
-        if (tok == kNPOS) continue;
-        double theta = 0.0;
-        if (!ParseLeadingNumber(hname, theta)) continue;   // needs an angle number
-        TH1* spec = dynamic_cast<TH1*>(k->ReadObj());
-        if (!spec) continue;
-        double y = 0.0, e = 0.0;
-        IntegrateLine(spec, L.E, L.halfWin, y, e);
-        delete spec;
-        if (y > 0.0) byAngle[theta] = { y, e > 0.0 ? e : std::sqrt(y) };
-    }
-    for (const auto& kv : byAngle) {
-        out.theta.push_back(kv.first);
-        out.yield.push_back(kv.second.first);
-        out.err.push_back(kv.second.second);
-    }
-    return !out.theta.empty();
-}
-
-static bool ExtractAngleYields(const TString& path, const AH::Line& L, AngleYields& out)
+static bool ExtractRingYields(const TString& path, const AH::Line& L, AngleYields& out)
 {
     TFile f(path, "READ");
     if (f.IsZombie()) {
         std::cerr << "  [warn] cannot open " << path << std::endl;
         return false;
     }
-    bool ok = ExtractFromTH2(&f, L, out);
-    if (!ok) ok = ExtractFromTH1s(&f, L, out);
+
+    // ---- discover the polar-ring spectra by name -----------------------------
+    std::vector<Ring> rings;
+    if (TList* keys = f.GetListOfKeys()) {
+        TIter next(keys);
+        while (TKey* k = static_cast<TKey*>(next())) {
+            if (!TString(k->GetClassName()).BeginsWith("TH1")) continue;
+            const TString hname = k->GetName();
+            int lo = 0, hi = 0;
+            if (std::sscanf(hname.Data(), AH::kRingScanf, &lo, &hi) == 2 && hi > lo)
+                rings.push_back({ lo, hi, hname });
+        }
+    }
+    if (rings.empty()) {
+        std::cerr << "  [warn] no 'PG_spectra_<lo>_to_<hi>_deg' rings in " << path << "\n";
+        f.Close();
+        return false;
+    }
+    std::sort(rings.begin(), rings.end(),
+              [](const Ring& a, const Ring& b) { return a.lo < b.lo; });
+
+    // ---- differential yield per ring -----------------------------------------
+    const double twoPi = TMath::TwoPi();
+    for (const Ring& r : rings) {
+        TH1* h = dynamic_cast<TH1*>(f.Get(r.name));
+        if (!h) continue;
+        double N = 0.0, eN = 0.0;
+        IntegrateLine(h, L.E, L.halfWin, N, eN);
+
+        const double dOmega = twoPi * (TMath::Cos(r.lo * TMath::DegToRad()) -
+                                       TMath::Cos(r.hi * TMath::DegToRad()));
+        if (dOmega <= 0.0) continue;
+
+        out.theta.push_back(0.5 * (r.lo + r.hi));   // ring centre [deg]
+        out.yield.push_back(N  / dOmega);           // dN/dOmega [1/sr]
+        out.err.push_back(eN / dOmega);
+    }
     f.Close();
-    return ok;
+    return !out.theta.empty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -286,8 +283,10 @@ struct DepthResult {
     double a4 = 0.0, a4e = 0.0;
     double iu = 0.0, iue = 0.0;
     double cv = 0.0, cve = 0.0;
+    double chi2ndf = 0.0;         // reduced chi2 of the flat (isotropic) hypothesis
     int    nAngles = 0;
-    bool   fitOK = false;
+    bool   fitOK  = false;
+    bool   chiOK  = false;
 };
 
 static DepthResult ComputeMetrics(double z, const AngleYields& d)
@@ -296,41 +295,65 @@ static DepthResult ComputeMetrics(double z, const AngleYields& d)
     r.z = z;
     r.nAngles = static_cast<int>(d.theta.size());
 
-    // ---- even Legendre fit -> a2, a4 -----------------------------------------
-    if (r.nAngles >= AH::kMinAngles) {
-        double amin = *std::min_element(d.theta.begin(), d.theta.end());
-        double amax = *std::max_element(d.theta.begin(), d.theta.end());
-        TGraphErrors g(r.nAngles);
-        for (int i = 0; i < r.nAngles; ++i) {
-            g.SetPoint(i, d.theta[i], d.yield[i]);
-            g.SetPointError(i, 0.0, d.err[i]);
+    // ---- even Legendre fit -> a2, a4 (rings with a valid error only) ---------
+    std::vector<double> ft, fy, fe;
+    for (int i = 0; i < r.nAngles; ++i)
+        if (d.yield[i] > 0.0 && d.err[i] > 0.0) {
+            ft.push_back(d.theta[i]);
+            fy.push_back(d.yield[i]);
+            fe.push_back(d.err[i]);
         }
+    const int nFit = static_cast<int>(ft.size());
+
+    if (nFit >= AH::kMinAngles) {
+        double amin = *std::min_element(ft.begin(), ft.end());
+        double amax = *std::max_element(ft.begin(), ft.end());
+        TGraphErrors g(nFit);
         double y0 = 0.0;
-        for (double v : d.yield) y0 += v;
-        y0 /= r.nAngles;
+        for (int i = 0; i < nFit; ++i) {
+            g.SetPoint(i, ft[i], fy[i]);
+            g.SetPointError(i, 0.0, fe[i]);
+            y0 += fy[i];
+        }
+        y0 /= nFit;
 
         TF1 fW("fW", LegendreW, amin, amax, 3);
         fW.SetParameters(y0, 0.0, 0.0);
-        fW.SetParNames("a0", "a2", "a4");
+        fW.SetParNames("A0", "a2", "a4");
         // Poisson weighting comes from the per-point 1/err^2 (default chi2 fit).
         TFitResultPtr res = g.Fit(&fW, "Q S N");
         if (res.Get() && res->IsValid()) {
-            r.a0  = res->Parameter(0);
-            r.a0e = res->ParError(0);
-            r.a2  = res->Parameter(1);
-            r.a2e = res->ParError(1);
-            r.a4  = res->Parameter(2);
-            r.a4e = res->ParError(2);
+            r.a0  = res->Parameter(0);  r.a0e = res->ParError(0);
+            r.a2  = res->Parameter(1);  r.a2e = res->ParError(1);
+            r.a4  = res->Parameter(2);  r.a4e = res->ParError(2);
             r.fitOK = true;
         }
     }
 
-    // ---- model-free uniformity indices ---------------------------------------
+    // ---- model-free uniformity indices (all rings) ---------------------------
     if (r.nAngles >= 2) {
         r.iu  = IntegralUniformity(d.yield);
         r.iue = PropagateError(IntegralUniformity, d.yield, d.err);
         r.cv  = CoeffOfVariation(d.yield);
         r.cve = PropagateError(CoeffOfVariation, d.yield, d.err);
+    }
+
+    // ---- chi2/ndf of the flat (isotropic) hypothesis -------------------------
+    // Weighted mean over rings with a valid error, then reduced chi2 (ndf=n-1).
+    if (nFit >= 2) {
+        double sw = 0.0, swy = 0.0;
+        for (int i = 0; i < nFit; ++i) {
+            const double w = 1.0 / (fe[i] * fe[i]);
+            sw += w;  swy += w * fy[i];
+        }
+        const double mean = swy / sw;
+        double chi2 = 0.0;
+        for (int i = 0; i < nFit; ++i) {
+            const double dlt = (fy[i] - mean) / fe[i];
+            chi2 += dlt * dlt;
+        }
+        r.chi2ndf = chi2 / (nFit - 1);
+        r.chiOK   = true;
     }
     return r;
 }
@@ -361,10 +384,9 @@ static void DrawAndSave(TGraphErrors* g, const TString& title, const TString& yt
     c.SaveAs(outfile);
 }
 
-// Per-depth angular distribution:  PG line yield vs emission angle theta, with
-// the even-Legendre fit  W(theta) = a0 [1 + a2 P2 + a4 P4]  overlaid (drawn
-// only when the fit succeeded).  This visualises the raw data behind the a2/a4,
-// IU and CV numbers.  One JPG is written per analysed line and depth.
+// Per-depth angular distribution:  differential yield I(theta)=dN/dOmega vs the
+// polar emission angle, with the even-Legendre fit W(theta)=A0[1+a2 P2+a4 P4]
+// overlaid (drawn only when the fit succeeded).  One JPG per line and depth.
 static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
                                     const AngleYields& d, const TString& outfile)
 {
@@ -385,9 +407,9 @@ static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
         amin = std::min(amin, d.theta[i]);
         amax = std::max(amax, d.theta[i]);
     }
-    g.SetTitle(Form("Angular distribution of PG yield  -  %s   (z = %g)", L.label, r.z));
+    g.SetTitle(Form("Differential PG yield vs emission angle  -  %s   (z = %g mm)", L.label, r.z));
     g.GetXaxis()->SetTitle("Emission angle  #theta  [deg]");
-    g.GetYaxis()->SetTitle("PG line yield  (per angle)");
+    g.GetYaxis()->SetTitle("dN/d#Omega  [sr^{-1}]");
     g.GetYaxis()->SetTitleOffset(1.5);
     if (ymax > 0.0) g.GetYaxis()->SetRangeUser(0.0, ymax * 1.25);
     g.SetMarkerStyle(20);
@@ -397,11 +419,11 @@ static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
     g.SetLineWidth(2);
     g.Draw("AP");
 
-    TLegend leg(0.60, 0.75, 0.88, 0.88);
+    TLegend leg(0.58, 0.74, 0.88, 0.88);
     leg.SetBorderSize(1);
     leg.SetFillColor(kWhite);
     leg.SetTextSize(0.030);
-    leg.AddEntry(&g, "PG yield #pm stat.", "lp");
+    leg.AddEntry(&g, "dN/d#Omega #pm stat.", "lp");
 
     // Even-Legendre fit overlay (same model used to extract a2/a4).
     TF1* fit = nullptr;
@@ -412,7 +434,7 @@ static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
         fit->SetLineWidth(2);
         fit->SetNpx(400);
         fit->Draw("L SAME");
-        leg.AddEntry(fit, "a_{0}[1+a_{2}P_{2}+a_{4}P_{4}]", "l");
+        leg.AddEntry(fit, "A_{0}[1+a_{2}P_{2}+a_{4}P_{4}]", "l");
     }
     leg.Draw();
 
@@ -425,7 +447,9 @@ static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
         tx.DrawLatex(0.17, yline, Form("a_{2} = %.3f #pm %.3f", r.a2, r.a2e)); yline -= 0.05;
         tx.DrawLatex(0.17, yline, Form("a_{4} = %.3f #pm %.3f", r.a4, r.a4e)); yline -= 0.05;
     }
-    tx.DrawLatex(0.17, yline, Form("IU = %.3f    CV = %.3f", r.iu, r.cv));
+    tx.DrawLatex(0.17, yline, Form("IU = %.3f   CV = %.3f", r.iu, r.cv));        yline -= 0.05;
+    if (r.chiOK)
+        tx.DrawLatex(0.17, yline, Form("#chi^{2}/ndf = %.2f", r.chi2ndf));
 
     gPad->RedrawAxis();
     c.SaveAs(outfile);
@@ -433,64 +457,54 @@ static void DrawAngularDistribution(const AH::Line& L, const DepthResult& r,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//                                 MAIN                                        //
+//                        PER-CONFIGURATION PROCESSING                         //
 ////////////////////////////////////////////////////////////////////////////////
 
-void analyze_angular_homogeneity()
+// Discover the PG_Spectrum_VS_Angle_<depth>.root files in one directory.
+static std::vector<std::pair<double, TString>> ListDepthFiles(const TString& dirPath)
 {
-    gROOT->SetBatch(kTRUE);
-    gStyle->SetOptStat(0);
-    gStyle->SetOptFit(0);
-    gStyle->SetTitleFontSize(0.045);
-
-    gSystem->mkdir(AH::kOutDir, kTRUE);
-
-    // ---- discover the PG-vs-angle files and their depths ---------------------
-    std::vector<std::pair<double, TString>> files;   // (depth, path)
-    {
-        TSystemDirectory dir(AH::kInputDir, AH::kInputDir);
-        TList* list = dir.GetListOfFiles();
-        if (list) {
-            TIter next(list);
-            while (TSystemFile* sf = static_cast<TSystemFile*>(next())) {
-                if (sf->IsDirectory()) continue;
-                TString name = sf->GetName();
-                if (!name.BeginsWith(AH::kFilePrefix) || !name.EndsWith(AH::kFileSuffix))
-                    continue;
-                TString tag = name;
-                tag.Remove(0, AH::kFilePrefix.Length());
-                tag.Remove(tag.Length() - AH::kFileSuffix.Length(), AH::kFileSuffix.Length());
-                double z = 0.0;
-                if (!ParseLeadingNumber(tag, z)) {
-                    std::cerr << "  [warn] cannot parse depth from '" << name << "', skipped\n";
-                    continue;
-                }
-                TString path = AH::kInputDir + "/" + name;
-                files.emplace_back(z, path);
-            }
+    std::vector<std::pair<double, TString>> files;
+    TSystemDirectory dir(dirPath, dirPath);
+    TList* list = dir.GetListOfFiles();
+    if (!list) return files;
+    TIter next(list);
+    while (TSystemFile* sf = static_cast<TSystemFile*>(next())) {
+        if (sf->IsDirectory()) continue;
+        TString name = sf->GetName();
+        if (!name.BeginsWith(AH::kFilePrefix) || !name.EndsWith(AH::kFileSuffix)) continue;
+        TString tag = name;
+        tag.Remove(0, AH::kFilePrefix.Length());
+        tag.Remove(tag.Length() - AH::kFileSuffix.Length(), AH::kFileSuffix.Length());
+        double z = 0.0;
+        if (!ParseLeadingNumber(tag, z)) {
+            std::cerr << "  [warn] cannot parse depth from '" << name << "', skipped\n";
+            continue;
         }
+        files.emplace_back(z, dirPath + "/" + name);
     }
     std::sort(files.begin(), files.end(),
               [](const std::pair<double, TString>& a, const std::pair<double, TString>& b) {
                   return a.first < b.first;
               });
+    return files;
+}
 
-    if (files.empty()) {
-        std::cerr << "\nNo input files matched  " << AH::kInputDir << "/"
-                  << AH::kFilePrefix << "*<depth>*" << AH::kFileSuffix << "\n"
-                  << "Set AH::kInputDir / AH::kFilePrefix to point at your "
-                  << "PG_Spectrum_VS_Angle_<depth>.root files.\n" << std::endl;
-        return;
-    }
+// Analyse one configuration (one directory holding a depth scan).
+static void ProcessConfig(const TString& dirPath, const TString& label)
+{
+    std::vector<std::pair<double, TString>> files = ListDepthFiles(dirPath);
+    if (files.empty()) return;
 
-    std::cout << "\nFound " << files.size() << " depth file(s):\n";
-    for (const auto& fp : files)
-        std::cout << "   z = " << fp.first << "   " << fp.second << "\n";
+    const TString outDir = AH::kOutDir + "/" + label;
+    gSystem->mkdir(outDir, kTRUE);
 
-    // ---- per-line analysis over depth ----------------------------------------
-    TFile fout(AH::kOutDir + "/angular_homogeneity.root", "RECREATE");
-    std::ofstream csv((AH::kOutDir + "/angular_homogeneity.csv").Data());
-    csv << "line,depth,n_angles,a2,a2_err,a4,a4_err,IU,IU_err,CV,CV_err\n";
+    std::cout << "\n############################################################\n"
+              << "# Configuration: " << label << "   (" << files.size() << " depths)\n"
+              << "############################################################\n";
+
+    TFile fout(outDir + "/angular_homogeneity.root", "RECREATE");
+    std::ofstream csv((outDir + "/angular_homogeneity.csv").Data());
+    csv << "line,depth,n_rings,a2,a2_err,a4,a4_err,IU,IU_err,CV,CV_err,chi2ndf\n";
 
     for (const auto& L : AH::kLines) {
         std::cout << "\n=== Line " << L.label << " ("
@@ -499,33 +513,35 @@ void analyze_angular_homogeneity()
         std::vector<DepthResult> R;
         for (const auto& fp : files) {
             AngleYields d;
-            if (!ExtractAngleYields(fp.second, L, d)) {
-                std::cerr << "  [warn] no angular yields for " << L.label
+            if (!ExtractRingYields(fp.second, L, d)) {
+                std::cerr << "  [warn] no ring yields for " << L.label
                           << " in " << fp.second << "\n";
                 continue;
             }
             DepthResult r = ComputeMetrics(fp.first, d);
             R.push_back(r);
-            std::cout << "  z=" << r.z << "  nAng=" << r.nAngles
+            std::cout << "  z=" << r.z << "  nRings=" << r.nAngles
                       << "  a2=" << r.a2 << "+/-" << r.a2e
                       << "  a4=" << r.a4 << "+/-" << r.a4e
-                      << "  IU=" << r.iu << "+/-" << r.iue
-                      << "  CV=" << r.cv << "+/-" << r.cve
+                      << "  IU=" << r.iu
+                      << "  CV=" << r.cv
+                      << "  chi2/ndf=" << r.chi2ndf
                       << (r.fitOK ? "" : "  [fit skipped]") << "\n";
 
             csv << L.name << "," << r.z << "," << r.nAngles << ","
                 << r.a2 << "," << r.a2e << "," << r.a4 << "," << r.a4e << ","
-                << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << "\n";
+                << r.iu << "," << r.iue << "," << r.cv << "," << r.cve << ","
+                << r.chi2ndf << "\n";
 
-            // JPG of the raw angular distribution + Legendre fit for this depth.
+            // JPG of the differential angular distribution + Legendre fit.
             DrawAngularDistribution(L, r, d,
-                AH::kOutDir + "/angular_dist_" + L.name + Form("_z%g", r.z) + ".jpg");
+                outDir + "/angular_dist_" + L.name + Form("_z%g", r.z) + ".jpg");
         }
         if (R.empty()) continue;
 
-        // Build TGraphErrors (a2/a4 only from valid fits).
-        TGraphErrors gA2, gA4, gIU, gCV;
-        int nFit = 0, nAll = 0;
+        // Build the depth-trend graphs.
+        TGraphErrors gA2, gA4, gIU, gCV, gChi;
+        int nFit = 0, nAll = 0, nChi = 0;
         for (const auto& r : R) {
             if (r.fitOK) {
                 gA2.SetPoint(nFit, r.z, r.a2);  gA2.SetPointError(nFit, 0.0, r.a2e);
@@ -535,39 +551,102 @@ void analyze_angular_homogeneity()
             gIU.SetPoint(nAll, r.z, r.iu);  gIU.SetPointError(nAll, 0.0, r.iue);
             gCV.SetPoint(nAll, r.z, r.cv);  gCV.SetPointError(nAll, 0.0, r.cve);
             ++nAll;
+            if (r.chiOK) { gChi.SetPoint(nChi, r.z, r.chi2ndf); gChi.SetPointError(nChi, 0.0, 0.0); ++nChi; }
         }
 
-        gA2.SetName(Form("a2_vs_depth_%s", L.name));
-        gA4.SetName(Form("a4_vs_depth_%s", L.name));
-        gIU.SetName(Form("IU_vs_depth_%s", L.name));
-        gCV.SetName(Form("CV_vs_depth_%s", L.name));
-
         const TString tag = L.name;
-        DrawAndSave(&gA2, Form("Legendre a_{2}(z)  -  %s", L.label), "a_{2}",
-                    AH::kOutDir + "/a2_vs_depth_" + tag + ".jpg", kAzure + 2);
-        DrawAndSave(&gA4, Form("Legendre a_{4}(z)  -  %s", L.label), "a_{4}",
-                    AH::kOutDir + "/a4_vs_depth_" + tag + ".jpg", kViolet + 1);
-        DrawAndSave(&gIU, Form("Integral uniformity IU(z)  -  %s", L.label),
-                    "IU = (Y_{max}-Y_{min})/(Y_{max}+Y_{min})",
-                    AH::kOutDir + "/IU_vs_depth_" + tag + ".jpg", kOrange + 7);
-        DrawAndSave(&gCV, Form("Coefficient of variation CV(z)  -  %s", L.label),
-                    "CV = #sigma_{Y} / #LTY#GT",
-                    AH::kOutDir + "/CV_vs_depth_" + tag + ".jpg", kTeal + 2);
+        gA2.SetName(Form("a2_vs_depth_%s", tag.Data()));
+        gA4.SetName(Form("a4_vs_depth_%s", tag.Data()));
+        gIU.SetName(Form("IU_vs_depth_%s", tag.Data()));
+        gCV.SetName(Form("CV_vs_depth_%s", tag.Data()));
+        gChi.SetName(Form("chi2ndf_vs_depth_%s", tag.Data()));
+
+        DrawAndSave(&gA2, Form("Legendre a_{2}(z)  -  %s  [%s]", L.label, label.Data()), "a_{2}",
+                    outDir + "/a2_vs_depth_" + tag + ".jpg", kAzure + 2);
+        DrawAndSave(&gA4, Form("Legendre a_{4}(z)  -  %s  [%s]", L.label, label.Data()), "a_{4}",
+                    outDir + "/a4_vs_depth_" + tag + ".jpg", kViolet + 1);
+        DrawAndSave(&gIU, Form("Integral uniformity IU(z)  -  %s  [%s]", L.label, label.Data()),
+                    "IU = (I_{max}-I_{min})/(I_{max}+I_{min})",
+                    outDir + "/IU_vs_depth_" + tag + ".jpg", kOrange + 7);
+        DrawAndSave(&gCV, Form("Coefficient of variation CV(z)  -  %s  [%s]", L.label, label.Data()),
+                    "CV = #sigma_{I} / #LTI#GT",
+                    outDir + "/CV_vs_depth_" + tag + ".jpg", kTeal + 2);
+        DrawAndSave(&gChi, Form("Flat-hypothesis #chi^{2}/ndf(z)  -  %s  [%s]", L.label, label.Data()),
+                    "#chi^{2} / ndf",
+                    outDir + "/chi2ndf_vs_depth_" + tag + ".jpg", kGray + 2);
 
         fout.cd();
-        gA2.Write(); gA4.Write(); gIU.Write(); gCV.Write();
+        gA2.Write(); gA4.Write(); gIU.Write(); gCV.Write(); gChi.Write();
     }
 
     csv.close();
     fout.Close();
 
-    std::cout << "\nDone. Outputs written to '" << AH::kOutDir << "/':\n"
-              << "   angular_homogeneity.root       (TGraphErrors)\n"
-              << "   angular_homogeneity.csv        (table)\n"
-              << "   a2/a4/IU/CV_vs_depth_<line>.jpg (homogeneity vs depth)\n"
-              << "   angular_dist_<line>_z<depth>.jpg (yield vs angle + fit)\n"
-              << std::endl;
+    std::cout << "\nWrote outputs to '" << outDir << "/'\n";
 }
 
-// Allow  root -l -b -q analyze_angular_homogeneity.C  to run main directly.
-void analyze_angular_homogeneity_C() { analyze_angular_homogeneity(); }
+////////////////////////////////////////////////////////////////////////////////
+//                                 MAIN                                        //
+////////////////////////////////////////////////////////////////////////////////
+
+void analyze_angular_homogeneity(const char* motherDir = ".")
+{
+    gROOT->SetBatch(kTRUE);
+    gStyle->SetOptStat(0);
+    gStyle->SetOptFit(0);
+    gStyle->SetTitleFontSize(0.045);
+
+    gSystem->mkdir(AH::kOutDir, kTRUE);
+
+    const TString mother = motherDir;
+
+    // ---- collect configurations ----------------------------------------------
+    // A "configuration" is any directory that directly contains depth files:
+    // each sub-directory of <mother>, and <mother> itself as a fallback.
+    std::vector<std::pair<TString, TString>> configs;   // (label, dirPath)
+
+    if (!ListDepthFiles(mother).empty()) {
+        TString base = gSystem->BaseName(mother);
+        if (base == "" || base == ".") base = "root";
+        configs.emplace_back(base, mother);
+    }
+
+    {
+        TSystemDirectory dir(mother, mother);
+        if (TList* list = dir.GetListOfFiles()) {
+            TIter next(list);
+            while (TSystemFile* sf = static_cast<TSystemFile*>(next())) {
+                if (!sf->IsDirectory()) continue;
+                TString name = sf->GetName();
+                if (name == "." || name == "..") continue;
+                TString sub = mother + "/" + name;
+                if (!ListDepthFiles(sub).empty())
+                    configs.emplace_back(name, sub);
+            }
+        }
+    }
+
+    if (configs.empty()) {
+        std::cerr << "\nNo '" << AH::kFilePrefix << "*<depth>" << AH::kFileSuffix
+                  << "' files found in '" << mother << "' or its sub-directories.\n"
+                  << "Usage:  root -l -b -q 'analyze_angular_homogeneity.C(\"/path/to/mother\")'\n"
+                  << "where <mother> holds the  prompt_gamma_spectra_*  sub-directories.\n"
+                  << std::endl;
+        return;
+    }
+
+    std::sort(configs.begin(), configs.end(),
+              [](const std::pair<TString, TString>& a, const std::pair<TString, TString>& b) {
+                  return a.first < b.first;
+              });
+
+    std::cout << "\nFound " << configs.size() << " configuration(s) under '" << mother << "':\n";
+    for (const auto& c : configs) std::cout << "   " << c.first << "   (" << c.second << ")\n";
+
+    for (const auto& c : configs) ProcessConfig(c.second, c.first);
+
+    std::cout << "\nDone. All outputs under '" << AH::kOutDir << "/<config>/':\n"
+              << "   a2/a4/IU/CV/chi2ndf_vs_depth_<line>.jpg  (trends vs depth)\n"
+              << "   angular_dist_<line>_z<depth>.jpg         (dN/dOmega + Legendre fit)\n"
+              << "   angular_homogeneity.root / .csv\n" << std::endl;
+}
