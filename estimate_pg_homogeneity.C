@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-//   analyze_angular_homogeneity.C  for Hadron Theraphy (Bragg-Peak project)   //
+//   estimate_pg_homogeneity.C  for Hadron Theraphy (Bragg-Peak project)      //
 //                                                                            //
 //   Angular-homogeneity (isotropy) analysis of prompt-gamma (PG) emission     //
 //   near the Bragg peak, following the method of the manuscript               //
@@ -44,8 +44,8 @@
 //   The y-axis quantity is selected by AH::kMetric (default: Legendre a2);    //
 //   change that one line to plot a4, IU, CV or chi2/ndf instead.              //
 //                                                                            //
-//   Run:  root -l -b -q 'analyze_angular_homogeneity.C("/path/to/mother")'    //
-//         root -l -b -q  analyze_angular_homogeneity.C     (uses ".")         //
+//   Run:  root -l -b -q 'estimate_pg_homogeneity.C("/path/to/mother")'       //
+//         root -l -b -q  estimate_pg_homogeneity.C        (uses ".")         //
 //                                                                            //
 //              - 29. Jul. 2026.  Bragg-Peak / HadronTheraphy1                 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -530,7 +530,7 @@ static void DrawModelComparison(int energy, const AH::Line& L, double dRef,
 //                                 MAIN                                        //
 ////////////////////////////////////////////////////////////////////////////////
 
-void analyze_angular_homogeneity(const char* motherDir = ".")
+void estimate_pg_homogeneity(const char* motherDir = ".")
 {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
@@ -564,7 +564,7 @@ void analyze_angular_homogeneity(const char* motherDir = ".")
         std::cerr << "\nNo 'prompt_gamma_spectra_<energy>MeV_<physics>' sub-directories with "
                   << AH::kFilePrefix << "*" << AH::kFileSuffix << " files found under '"
                   << mother << "'.\n"
-                  << "Usage:  root -l -b -q 'analyze_angular_homogeneity.C(\"/path/to/mother\")'\n"
+                  << "Usage:  root -l -b -q 'estimate_pg_homogeneity.C(\"/path/to/mother\")'\n"
                   << std::endl;
         return;
     }
