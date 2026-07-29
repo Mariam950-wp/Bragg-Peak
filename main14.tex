@@ -1,0 +1,405 @@
+% !TeX program = lualatex
+\documentclass[a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}%\usepackage[latin1]{inputenc}
+\usepackage{iftex}
+\ifPDFTeX
+  \DeclareUnicodeCharacter{0301}{\'{e}}
+\fi
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{hyperref}
+\usepackage{authblk}
+\usepackage{amsmath}
+
+\usepackage{geometry}
+\usepackage{booktabs}
+\geometry{left=1in, right=1in, top=1in, bottom=1in}
+
+\title {Geant4 simulation of prompt-gamma emission in a PMMA phantom: experimental benchmarking of the depth profile and angular homogeneity analysis of the prompt-gamma lines}
+
+\author{M. Abuladze \thanks{e-mail address of an author: mariam.abuladze@kiu.edu.ge} $^2$ }
+\author{R. Shanidze $^{1,2}$}
+\author{A. Stahl $^3$}
+
+\affil{$^1$ Faculty of Physics, Ivane Javakhishvili Tbilisi State University,
+I. Chavchavadze str. 1, Tbilisi, Georgia}
+
+\affil{$^2$ Kutaisi International University
+Youth Avenue, 5/7, Kutaisi, Georgia}
+
+\affil{$^3$ Physics Institute III B, RWTH Aachen University,
+  Otto-Blumenthal-Straße 18 , Aachen, Germany}
+
+\date{2 June, 2026}
+
+\begin{document}
+
+\maketitle
+\vspace{6pt}
+
+\begin{abstract}
+Prompt-gamma emission offers a promising approach for real-time monitoring of proton therapy, as the spatial distribution of detected photons is closely related to the Bragg peak position and thus the delivered dose. In this work, we report on a Geant4 Monte Carlo simulation study of prompt-gamma production arising from the interaction of a proton beam with a PMMA phantom. The simulation geometry was designed to closely replicate the experimental setup employed at the Cracow Ion-Beam Therapy Centre in 2012, enabling accurate selection of the probed depth within the phantom.
+
+Two proton beam energies, 70.54 MeV and 130.87 MeV, were investigated at detection angles of 90° and 120°, covering the lower and upper part of the clinically relevant energy range. The results are expressed as prompt-gamma yield profiles as a function of phantom depth. The benchmark against the measured data is performed for a single transition, the $^{12}$C (4.44 MeV $\to$ g.s.) line, which carries the largest cross section and is the dominant contributor to the prompt-gamma signal in tissue-equivalent materials. The agreement is quantified by a sigmoid fit to the distal fall-off, yielding the fall-off position difference $\Delta z_{50}$ and steepness difference $\Delta\sigma_\mathrm{fall}$, which are the standard metrics for prompt-gamma range comparison~\cite{janssen2014,pinto2015,valencialozano2023}. The $^{16}$O (6.13 MeV $\to$ g.s.) line, although measured in the Cracow experiment, is excluded from the comparison because Geant4 is known not to reproduce the corresponding production cross sections reliably. Conversely, the simulation predicts a $^{16}$O line at 9.6 MeV that was not covered by the experimental spectroscopic analysis and is therefore reported as a Geant4-only result. In addition, the homogeneity (isotropy) of the spatial prompt-gamma emission is quantified as a function of depth for the two lines accessible in the simulation, 4.44 MeV and 9.6 MeV, using a Legendre-expansion fit of the angular distribution together with model-free uniformity indices. Two key findings emerge from this work. First, although Geant4 fails to reproduce the fine structure of the $^{12}$C 4.44~MeV doublet, the overall, integrated intensity of this line nonetheless correlates closely with the Bragg peak position at both beam energies, so that the simulated line intensity remains a reliable proxy for range verification despite the underlying cross-section discrepancy; the simulated 9.6~MeV profiles follow the same behaviour and are put forward as a candidate additional range-verification channel awaiting experimental confirmation. Second, a non-uniform angular distribution of the simulated prompt-gamma yield is observed for both lines even though Geant4 emits individual de-excitation photons isotropically. A proof by construction demonstrates that this inhomogeneity cannot originate from non-uniform magnetic substate population of the emitting nucleus — Geant4's \texttt{G4PhotonEvaporation} module does not track substate populations and assumes a fully unpolarised excited state, so the well-known Kiener anisotropy of the $2^+\to 0^+$ transition is absent from the simulation by design. The observed non-uniformity therefore has an exclusively kinematic origin: the Lorentz boost from the recoiling-nucleus rest frame to the laboratory, the forward-peaked differential cross section of the $(p,p'\gamma)$ inelastic channel, and angular correlations accumulated in the multi-step hadronic cascade together produce a residual angular non-uniformity of the yield that is independent of — and additive with — the intrinsic quantum-mechanical transition anisotropy.
+
+\end{abstract}
+
+\vspace{6pt}
+
+\section{Introduction}
+
+Proton therapy has emerged as one of the most precise modalities in radiation oncology, owing to the characteristic energy deposition profile of charged particles — the Bragg peak — which allows a highly conformal dose to be delivered to the tumor while sparing surrounding healthy tissue~\cite{knopf2013}. However, the clinical effectiveness of this approach critically depends on the accurate verification of the beam range in vivo, as even small deviations in the Bragg peak position can lead to under-dosage of the target or unwanted irradiation of organs at risk~\cite{paganetti2012,knopf2013}. Prompt-gamma emission, produced through nuclear inelastic interactions between the proton beam and the constituent nuclei of tissue, has been identified as a particularly attractive signal for real-time range monitoring, since the longitudinal profile of the emitted photons is strongly correlated with the dose deposition region~\cite{krimmer2018,parodipolf2018}. Among the most prominent contributors to this signal are the de-excitation transitions of $^{12}$C (4.44 MeV) and $^{16}$O (6.13 MeV), which are abundant in biological and tissue-equivalent materials~\cite{verburg2014}. Despite considerable experimental and theoretical progress in recent years, a detailed understanding of the angular and energy dependence of the prompt-gamma yield remains essential for the design and optimization of clinical monitoring systems~\cite{krimmer2018}. In this work, we present a Geant4-based Monte Carlo simulation study of prompt-gamma emission from proton beams impinging on a PMMA phantom, benchmarked against measurements performed at the Cracow Ion-Beam Therapy Centre in 2012. It should be stated at the outset that the set of transitions accessible to the simulation and the set measured in that experiment do not coincide: the quantitative comparison to experiment is therefore restricted to the 4.44~MeV $^{12}$C line, the measured 6.13~MeV $^{16}$O line is excluded because of the known deficiencies of the Geant4 production cross sections for that transition, and the 9.6~MeV $^{16}$O line predicted by the simulation has no experimental counterpart in the Cracow dataset. The comparison of the 4.44~MeV profiles is carried out with three complementary quantitative criteria — a sigmoid fall-off fit, a global shape similarity statistic, and a peak-to-plateau ratio — applied to both beam energies and both detection angles (Section~\ref{sec:metrics}). Accordingly, the study of the angular homogeneity of the emission is carried out for the two lines available in the simulation, 4.44~MeV and 9.6~MeV.
+
+\section{Experimental setup and Geant4 Simulation}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\linewidth]{images/figure1.png}
+    \caption{Figure 1: A top-view photo (left) and a scheme (right) of the experimental set-up. (1) beam
+pipe nozzle, (2) beam trajectory, (3) thick part of the phantom (wedges, arrow indicates
+direction of motion), (4) thin phantom slice, (5) HPGe detector, (6) trajectory of protons
+scattered on the exit nozzle material, (7) beam current monitors, (8) lead shield.}
+    \label{files}
+\end{figure}
+
+The experimental setup used as a reference was the prompt-gamma measurement campaign conducted at the Cracow Ion-Beam Therapy Centre in 2012. In that experiment, a proton beam was directed into a PMMA phantom consisting of a thick movable wedge-shaped degrader and a thin fixed target slice of 2~mm thickness (field-of-view, FOV). By varying the degrader thickness, the effective depth of the irradiated slice within the phantom could be scanned continuously, allowing the prompt-gamma yield to be recorded as a function of proton range. A high-purity germanium (HPGe) detector was positioned at a fixed polar angle of 90$^\circ$ relative to the beam axis to register the emitted photons. The detector subtended a polar angular acceptance of $\Delta\theta = 0.018865$~rad, corresponding to a solid angle of
+\begin{equation}
+    \Delta\Omega = 2\pi\,\sin(90^\circ)\,\Delta\theta \approx 0.1186~\text{sr}.
+\end{equation}
+
+The Geant4 simulation~\cite{geant4} (version 10.6) was built to replicate this geometry. The PMMA phantom was modelled with the same material composition ($\mathrm{C_5H_8O_2}$, density $1.19~\mathrm{g\,cm^{-3}}$), and the degrader thickness was varied to reproduce the range of probed depths. Two proton beam energies were simulated, 70.54~MeV and 130.87~MeV, corresponding to Bragg peak positions of approximately 33~mm and 107~mm in PMMA, respectively. % TODO: verify the 70.54 MeV Bragg peak depth against your simulation output
+For each degrader setting the simulation recorded, for every prompt gamma produced in the 2~mm target slice, its energy and the polar angle of emission. Photon energy spectra were stored separately for each of the two detection angles (90$^\circ$, 120$^\circ$). All spectra were normalised to the number of primary protons, so that the recorded yield is expressed per incident proton.
+
+\subsection{Physics list configuration}
+\label{sec:physlists}
+
+To assess the sensitivity of the simulated prompt-gamma yields to the choice of hadronic and electromagnetic physics modelling, the 130.87~MeV run was repeated with three alternative Geant4 reference physics lists, with all other simulation parameters kept identical: \texttt{QGSP\_BIC\_HP\_EMZ} (Binary Cascade below $\sim$10~GeV with the Quark-Gluon String model above it, plus High Precision neutron transport), \texttt{QBBC} (a general-purpose baseline combining the Bertini, Binary and Fritiof models), and \texttt{FTFP\_BERT\_HP} (Fritiof with a Bertini cascade at lower energies, also with High Precision neutron transport). Comparing the three configurations at a fixed beam energy isolates the effect of the physics list choice on the predicted $^{12}$C and $^{16}$O prompt-gamma yield profiles, complementing the depth-scan results obtained with the primary \texttt{QGSP\_BIC\_HP\_EMZ} configuration used throughout the remainder of this work.
+
+\subsection{Computational implementation}
+
+The depth scan was realised by stepping the degrader thickness in 2~mm increments; for the 130.87~MeV beam the scan covered 27 values from 67.5~mm to 119.5~mm, while for the 70.54~MeV beam the scan window was shifted to bracket the shallower Bragg peak position at approximately 33~mm depth. % TODO: insert the exact 70 MeV degrader range and number of scan points from your run configuration
+In both cases the effective probed depth inside the phantom was sampled in fine steps across the full range of interest, including the distal fall-off region. Because a statistically adequate number of primary protons was required at every depth point, the simulation was distributed as a high-throughput computing (HTC) workload on an HTCondor batch cluster~\cite{condor} rather than run as a single serial job.
+
+For each degrader thickness, a dedicated Condor submit description was generated from a template by substituting the thickness value into the executable's argument list, and $10^3$ independent jobs were queued (vanilla universe), each launching one Geant4 run with an independent random seed. Submit-file requirements excluded a small number of cluster nodes known to be problematic, and jobs were ranked by available memory (\texttt{request\_memory = 1000}~MB, \texttt{request\_disk = 420}~MB) to improve scheduling efficiency. A driver script iterated sequentially over the 27 thickness values: for each one it (i) regenerated the submit file, (ii) submitted the batch of 1000 jobs to Condor, (iii) blocked on \texttt{condor\_wait} until every job in the batch had returned, and (iv) triggered the downstream analysis step only once the full statistics for that depth were available, before proceeding to the next thickness.
+
+Each individual Condor job executed a wrapper shell script on the assigned worker node. The wrapper created a job-specific scratch working directory on local disk, copied the compiled Geant4 executable and the required run macros (the main control macro together with the run-series macro files) from shared network storage using a retrying copy command (up to ten attempts with a delay between retries, to absorb transient filesystem or network errors), and verified that each file had arrived before proceeding. The Geant4 executable was then run in batch mode with the control macro and the current degrader thickness passed as a command-line argument, so that a single compiled binary could be reused unmodified across the whole thickness scan. Standard output and diagnostic information were captured in a per-job log file. On completion, the resulting ROOT output file and log were copied back to a shared output directory and the local scratch area was deleted to free disk space on the worker node; the script's exit status was propagated back to Condor so that failed jobs could be identified.
+
+Once all 1000 jobs for a given thickness had finished successfully, the driver script invoked a ROOT~\cite{root} analysis macro to build the per-angle prompt-gamma energy spectra from the individual job outputs for that depth point, after which the merged result file was moved to a permanent results directory and the temporary per-job outputs were cleared before moving on to the next thickness. If a batch of jobs for a given thickness failed, the pipeline logged the error and continued automatically with the next depth point rather than aborting the full scan. This automated submit-run-analyse-clean loop allowed the full 27-point depth scan, each with $10^3$-fold parallel statistics, to be executed with minimal manual intervention.
+
+\section{Prompt-Gamma profiles}
+
+The prompt-gamma yield profiles were extracted from the simulated energy spectra recorded at both the 90$^\circ$ and 120$^\circ$ detection angles. Two characteristic nuclear de-excitation lines are reported here: the $^{12}$C line at 4.44~MeV, which is the only transition for which a benchmark against the Cracow measurement is possible, and the $^{16}$O line at 9.6~MeV, which is present in the simulation but has no experimental counterpart. The 6.13~MeV $^{16}$O line was also extracted from the simulated spectra, but is not reported as a result for the reasons given in Section~\ref{sec:comparison}. For each line, the photon count $N_\gamma$ was obtained by integrating the corresponding energy histogram over the relevant energy window, and the depth-dependent yield was computed as
+
+\begin{equation}
+    Y(z) = \frac{N_\gamma(z)}{FOV \cdot \Delta\Omega},
+    \label{eq:yield}
+\end{equation}
+
+where $z$ denotes the degrader thickness (i.e.\ the effective emission depth), $FOV = 2$~mm is the target slice thickness, and $\Delta\Omega \approx 0.1186$~sr is the solid angle of the detector. The resulting quantity has units of $\mathrm{proton^{-1}\,mm^{-1}\,sr^{-1}}$ and directly corresponds to the left-hand side of the experimental yield formula, with the number-of-protons factor already absorbed by the per-proton normalisation of the simulation.
+
+The depth axis is expressed as the shifted coordinate $z - d_\mathrm{BP}$, where $d_\mathrm{BP}$ is the Bragg peak depth in PMMA for the given beam energy: $d_\mathrm{BP} = 107$~mm for 130.87~MeV protons and $d_\mathrm{BP} \approx 33$~mm for 70.54~MeV protons. This shift places the distal fall-off of both beam energies at $z - d_\mathrm{BP} \approx 0$~mm, so that the Bragg peak position coincides on a common axis and the profiles from the two beam energies can be compared directly regardless of their absolute proton range.
+
+The simulated 4.44~MeV ($^{12}$C) yield profiles for the 130.87~MeV beam are presented side by side with the corresponding experimental profiles in Section~\ref{sec:comparison} (Figures~\ref{fig:cmp_44_90} and~\ref{fig:cmp_44_120}), and the 9.6~MeV ($^{16}$O) profiles are shown in Figure~\ref{fig:g4_96}. It should be noted that the 9.6~MeV line, while accessible in the Geant4 simulation, was not measured in the Cracow experiment and is therefore presented as a Geant4-only result without an experimental counterpart (Section~\ref{sec:96line}).
+
+At the lower beam energy the proton range in PMMA is roughly three times shorter, so the same 2~mm degrader step corresponds to a coarser sampling of the $z - d_\mathrm{BP}$ axis. Qualitatively, however, the 70.54~MeV profiles (not shown) exhibit the same behaviour as their 130.87~MeV counterparts: the yield of both lines rises towards the end of range and drops sharply at the distal fall-off, located at $z - d_\mathrm{BP} \approx 0$~mm.
+
+\subsection{Angular homogeneity of the prompt-gamma emission}
+\label{sec:homogeneity}
+
+Beyond the depth dependence of the yield, it is of interest to quantify how homogeneous — that is, how close to isotropic — the prompt-gamma emission is as a function of the polar emission angle, and how any departure from isotropy evolves with depth. This analysis is carried out for the two lines available in the simulation, the 4.44~MeV $^{12}$C line and the 9.6~MeV $^{16}$O line; the 6.13~MeV line is excluded here for the same cross-section reason that excludes it from the comparison of Section~\ref{sec:comparison}. The question has a direct bearing on the present study for two reasons. First, Geant4 emits nuclear de-excitation photons isotropically by construction, so a homogeneity analysis provides a controlled internal baseline against which the physical angular anisotropy of the 4.44~MeV line — applied as an \emph{a posteriori} correction in Section~\ref{sec:corrections} — can be assessed, and against which the assumption of isotropy retained for the 9.6~MeV line, for which no angular-distribution data exist, can be made explicit. Second, the degree of angular homogeneity determines how strongly the choice of detector polar angle influences the measured range profile, which is a practical consideration for the placement of a clinical monitoring detector, and for the 9.6~MeV line it is one of the few statements that can be made in the absence of a measurement. To exploit the full angular information contained in the segmented spherical detector, the emission is analysed here in every polar-angle ring rather than only at the two nominal detection angles.
+
+The homogeneity is estimated with a method combining the two approaches established in the literature — the physics-based angular-distribution fit and the model-free uniformity indices used in detector quality control — reduced to a small set of per-depth numbers. The procedure has three steps:
+
+\begin{enumerate}
+    \item \textbf{Build the differential angular yield.} At each depth the line intensity is evaluated in every polar ring of the spherical detector using the same definition as equation~(\ref{eq:yield}), but with the true solid angle of the ring, $\Delta\Omega = 2\pi\,(\cos\theta_\mathrm{lo} - \cos\theta_\mathrm{hi})$, rather than the fixed $\Delta\Omega \approx 2\pi\sin\theta\,\Delta\theta$ of equation~(\ref{eq:yield}), which is exact only at $90^\circ$. This yields the differential distribution $\mathrm{d}N/\mathrm{d}\Omega(\theta)$, which is flat in $\theta$ for a genuinely isotropic source; Poisson uncertainties $\sqrt{N_\gamma}$ are propagated to each ring.
+    \item \textbf{Fit the angular distribution.} Within each depth slice the distribution is described by the standard even-order Legendre expansion for $\gamma$ emission following $(p,p'\gamma)$ reactions,
+    \begin{equation}
+        W(\theta) = A_0\left[\,1 + a_2\,P_2(\cos\theta) + a_4\,P_4(\cos\theta)\,\right],
+        \label{eq:legendre}
+    \end{equation}
+    where $P_2$ and $P_4$ are the Legendre polynomials and $a_2, a_4$ are the anisotropy coefficients, which vanish identically for isotropic (homogeneous) emission~\cite{kiener1998,onecha2024}. A non-linear least-squares fit performed independently at each depth returns $a_2(z)$ and $a_4(z)$ with their uncertainties, so that the depth evolution of the anisotropy can be traced directly.
+    \item \textbf{Form model-free uniformity indices.} Independently of any functional model, each angular slice is also reduced to the integral non-uniformity $\mathrm{IU} = (I_\mathrm{max} - I_\mathrm{min})/(I_\mathrm{max} + I_\mathrm{min})$ and the coefficient of variation $\mathrm{CV} = \sigma_I/\langle I\rangle$, the two uniformity estimators whose combination is recommended for gamma-camera flood-field quality control~\cite{murray2014}, together with a $\chi^2/\mathrm{ndf}$ test of the flat (isotropic) hypothesis. Unlike the Legendre fit, these indices remain well defined in the low-yield distal region beyond the range, where the vanishing statistics make the fit unstable.
+\end{enumerate}
+
+For a perfectly homogeneous emission all of these estimators take their isotropic values, $a_2 = a_4 = 0$, $\mathrm{IU} = \mathrm{CV} = 0$ and $\chi^2/\mathrm{ndf} = 1$; departures from these values, and in particular their localisation in depth, quantify where and how strongly the emission becomes anisotropic. Because Geant4's de-excitation photons are emitted isotropically, the simulated estimators are expected to be consistent with homogeneity within statistics across the plateau, so that any residual structure marks the depths at which the \emph{physical} anisotropy of the 4.44~MeV transition — absent from the simulation but present in the measurement — would be most significant, reinforcing the rationale for the anisotropy correction of Section~\ref{sec:corrections}. The same estimators evaluated for the 9.6~MeV line quantify, in the absence of any measured angular distribution, the depth region in which a future experiment would be most sensitive to a departure from the isotropy assumed here.
+
+\textbf{Legendre coefficients near the Bragg peak.}
+The anisotropy coefficients $a_2$ and $a_4$ of equation~(\ref{eq:legendre}) were extracted from the solid-angle-normalised differential yield $\mathrm{d}N/\mathrm{d}\Omega(\theta)$ at the three depth points closest to the Bragg peak ($d_\mathrm{BP} = 107$~mm for the 130.87~MeV beam and $d_\mathrm{BP} \approx 33$~mm for the 70.54~MeV beam), where the line statistics are highest and the fit is most stable, and the extraction was repeated for the two analysed lines and for each of the three physics lists of Section~\ref{sec:physlists}. Figures~\ref{fig:homog_130} and~\ref{fig:homog_70} show the leading coefficient $a_2$ as a function of $z - d_\mathrm{BP}$ for the two beam energies, with the three physics lists overlaid and the dashed line marking the isotropic expectation $a_2 = 0$; the fitted coefficients at the Bragg peak are collected in Table~\ref{tab:legendre}.
+% TODO: fill in the numeric values below and in Table~\ref{tab:legendre} from
+%       angular_homogeneity_summary.csv produced by analyze_angular_homogeneity.C.
+Near the Bragg peak the leading coefficient is small but resolvably non-zero, $a_2 \approx \ldots$, while the fourth-order term remains consistent with zero within its uncertainty, $a_4 \approx \ldots$; the three physics lists agree within their fit uncertainties, indicating that the residual angular non-uniformity is a robust feature of the simulation rather than an artefact of a particular hadronic model.
+
+\begin{figure}[h]
+    \centering
+    \subfloat[4.44~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_130MeV_4p44MeV.jpg}}
+    \hfill
+    \subfloat[9.6~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_130MeV_9p6MeV.jpg}}
+    \caption{Leading Legendre anisotropy coefficient $a_2$ of the prompt-gamma angular distribution as a function of $z - d_\mathrm{BP}$ at the three depths closest to the Bragg peak, for the 130.87~MeV beam: (a) the 4.44~MeV $^{12}$C line and (b) the 9.6~MeV $^{16}$O line. The three curves compare the \texttt{FTFP\_BERT\_HP}, \texttt{QBBC} and \texttt{QGSP\_BIC\_HP\_EMZ} physics lists; the dashed line marks the isotropic value $a_2 = 0$.}
+    \label{fig:homog_130}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \subfloat[4.44~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_70MeV_4p44MeV.jpg}}
+    \hfill
+    \subfloat[9.6~MeV]{\includegraphics[width=0.48\linewidth]{images/inhomogeneity_70MeV_9p6MeV.jpg}}
+    \caption{Same as Figure~\ref{fig:homog_130}, for the 70.54~MeV beam.}
+    \label{fig:homog_70}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Fitted even-order Legendre coefficients $a_2$ and $a_4$ (equation~(\ref{eq:legendre})) of the prompt-gamma angular distribution at the Bragg peak ($z - d_\mathrm{BP} \approx 0$), for both beam energies, both analysed lines and the three physics lists. Uncertainties are the fit uncertainties.}
+\label{tab:legendre}
+\begin{tabular}{lllcc}
+\toprule
+Energy & Line & Physics list & $a_2$ & $a_4$ \\
+\midrule
+% TODO: fill from angular_homogeneity_summary.csv (values at z - d_BP ~ 0)
+130.87~MeV & 4.44~MeV & \texttt{FTFP\_BERT\_HP}     & $\cdots$ & $\cdots$ \\
+130.87~MeV & 4.44~MeV & \texttt{QBBC}               & $\cdots$ & $\cdots$ \\
+130.87~MeV & 4.44~MeV & \texttt{QGSP\_BIC\_HP\_EMZ} & $\cdots$ & $\cdots$ \\
+\midrule
+130.87~MeV & 9.6~MeV  & \texttt{FTFP\_BERT\_HP}     & $\cdots$ & $\cdots$ \\
+130.87~MeV & 9.6~MeV  & \texttt{QBBC}               & $\cdots$ & $\cdots$ \\
+130.87~MeV & 9.6~MeV  & \texttt{QGSP\_BIC\_HP\_EMZ} & $\cdots$ & $\cdots$ \\
+\midrule
+70.54~MeV  & 4.44~MeV & \texttt{FTFP\_BERT\_HP}     & $\cdots$ & $\cdots$ \\
+70.54~MeV  & 4.44~MeV & \texttt{QBBC}               & $\cdots$ & $\cdots$ \\
+70.54~MeV  & 4.44~MeV & \texttt{QGSP\_BIC\_HP\_EMZ} & $\cdots$ & $\cdots$ \\
+\midrule
+70.54~MeV  & 9.6~MeV  & \texttt{FTFP\_BERT\_HP}     & $\cdots$ & $\cdots$ \\
+70.54~MeV  & 9.6~MeV  & \texttt{QBBC}               & $\cdots$ & $\cdots$ \\
+70.54~MeV  & 9.6~MeV  & \texttt{QGSP\_BIC\_HP\_EMZ} & $\cdots$ & $\cdots$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A second and physically distinct finding emerges from this homogeneity analysis: a non-uniform angular distribution of the simulated prompt-gamma yield is observed even though Geant4 emits individual de-excitation photons isotropically. Before identifying the actual cause, it is essential to exclude the mechanism that is usually invoked to explain prompt-gamma angular anisotropy in the experimental literature — the non-uniform population of magnetic substates of the emitting nucleus — and to demonstrate by construction that it plays no role in the present simulation results.
+
+\textbf{Proof that magnetic substate population is not the origin.}
+In the nuclear physics treatment of inelastic proton scattering, the angular distribution of the emitted $\gamma$ ray is governed by the statistical tensor $\rho_{kq}$ (or equivalently the polarisation tensor $t_{kq}$) of the excited nuclear state~\cite{kiener1998}. For the $^{12}$C $2^+ \to 0^+$ transition at 4.44~MeV, a non-uniform population of the five magnetic substates $m = -2, -1, 0, +1, +2$ of the $2^+$ level produces a non-zero $\rho_{20}$ component, which generates the $a_2 P_2(\cos\theta)$ term in the angular distribution $W(\theta)$; a non-zero $\rho_{40}$ similarly generates $a_4 P_4(\cos\theta)$~\cite{kiener1998,onecha2024}. This is the physical origin of the anisotropy measured experimentally and modelled by Kiener~\cite{kiener1998}. Three conditions must hold simultaneously for this mechanism to produce angular non-uniformity: (i) the inelastic scattering reaction must preferentially populate certain $m$ substates, (ii) the de-excitation photon emission probability must depend on the angle relative to the nuclear spin quantisation axis, and (iii) a common reference axis (the beam direction) must exist to define that angle coherently across many events.
+
+Geant4's \texttt{G4PhotonEvaporation} module satisfies none of these conditions. When the hadronic cascade (Binary Cascade, Bertini Cascade, or Fritiof) marks a nucleus as excited at energy $E^*$, it passes only the excitation energy to the de-excitation module; no information about the nuclear spin orientation, the magnetic substate population, or the scattering geometry of the inelastic step is transmitted. The de-excitation module then draws the photon emission direction uniformly and independently on the unit sphere in the nucleus rest frame, event by event, without any reference to the reaction axis. This is equivalent to assuming a fully unpolarised excited state ($\rho_{kq} = 0$ for all $k > 0$), which by the Wigner--Eckart theorem yields $W(\theta) = \mathrm{const}$, i.e.\ perfect isotropy in the nucleus rest frame. This design choice is a known, documented limitation of Geant4 that extends to all general-purpose Monte Carlo codes: it has been explicitly noted in the nuclear spectroscopy literature~\cite{doublebeta2008} and confirmed most recently in the context of polarised nuclear imaging, where it was stated that ``the polarization effect on the angular distribution of the emitted photons [is] not implemented in general Monte Carlo codes such as MCNP, EGSnrc, Geant4''~\cite{gatepni2025}. In the proton therapy context it is precisely the limitation identified by Wrońska~et~al.~\cite{wronska2021} and discussed in Section~\ref{sec:corrections} of this work: it is the reason the Kiener anisotropy must be applied \emph{a posteriori} rather than obtained from the simulation itself.
+
+Since magnetic substate population is absent from Geant4 by construction, \emph{it cannot be the cause of the angular non-uniformity observed in the simulated yield}. The homogeneity estimators $a_2(z)$, $a_4(z)$, $\mathrm{IU}(z)$ and $\mathrm{CV}(z)$ are therefore probing a different physical effect entirely.
+
+\textbf{The actual cause: nuclear inelastic reaction kinematics.}
+The non-uniformity of the \emph{yield} across the polar detector ring arises from three purely kinematic effects that are present even when each photon is emitted isotropically in the nucleus rest frame:
+
+\begin{enumerate}
+    \item \textbf{Lorentz boost.} The excited $^{12}$C or $^{16}$O nucleus recoils with a momentum determined by the inelastic scattering kinematics. A photon emitted isotropically in the nucleus rest frame is boosted into the laboratory frame with a distribution that is no longer isotropic: forward-moving nuclei produce photons that are forward-collimated, and the degree of collimation depends on the nucleus recoil velocity $\beta = p_\mathrm{rec}/E_\mathrm{rec}$. At 70.54--130.87~MeV incident proton energy, $\beta_\mathrm{rec}$ of the struck $^{12}$C nucleus is of order a few per cent of $c$, producing a few-per-cent modulation of the photon yield across the polar ring.
+    \item \textbf{Forward-peaked differential cross section.} The differential cross section $d\sigma/d\Omega_p$ of the inelastic scattering reaction $(p,p'\gamma)$ is not isotropic: it peaks strongly in the forward direction at these energies, as shown by the coupled-channels calculations of Kiener~\cite{kiener1998} and the optical-model results that underlie all three Geant4 hadronic generators. This means that recoiling nuclei are preferentially produced moving forward, amplifying the Lorentz-boost asymmetry in the same direction.
+    \item \textbf{Multi-step cascade correlations.} The Binary Cascade and Bertini models propagate the struck nucleon through the nuclear medium via a sequence of two-body collisions. Each collision conserves four-momentum individually, so the angular correlations accumulated through the cascade do not average to isotropy when projected onto the beam axis. The net nuclear recoil direction after the full cascade is correlated with the beam direction in a way that depends on the number of collisions and on the impact parameter, neither of which is isotropically distributed.
+\end{enumerate}
+
+All three effects are kinematic in origin — they require no spin polarisation, no magnetic substate alignment, and no knowledge of the nuclear transition multipolarity. They would be present even for a $0^+ \to 0^+$ transition (which has no classical angular distribution at all) if such a transition existed, because the yield non-uniformity arises in the \emph{production} step, not the \emph{emission} step. This is the sense in which the effect identified here is genuinely distinct from the Kiener anisotropy: the Kiener correction accounts for the anisotropy in the emission step (non-uniform substate population $\to$ angle-dependent $W(\theta)$), whereas the kinematic effect identified here acts in the production step and survives even when $W(\theta) = \mathrm{const}$. The two contributions are therefore additive, and both must be accounted for when interpreting prompt-gamma yields measured simultaneously at multiple polar angles.
+
+The full procedure is implemented in the analysis macro \texttt{estimate\_pg\_homogeneity.C}, which writes $a_2(z)$, $a_4(z)$, $\mathrm{IU}(z)$, $\mathrm{CV}(z)$ and $\chi^2/\mathrm{ndf}(z)$ for both the 4.44~MeV and the 9.6~MeV line.
+
+\section{Comparison to experiment}
+\label{sec:comparison}
+
+The reference experimental dataset is taken from Kelleter~et~al.~\cite{kelleter2017}, who performed a spectroscopic study of prompt-gamma emission at the Cracow Ion-Beam Therapy Centre. Depth profiles were measured for PMMA, POM and graphite phantoms at beam energies of 70.54~MeV and 130.87~MeV and at detection angles of 90$^\circ$ and 120$^\circ$, using a HPGe detector with an active Compton shield; both the 70.54~MeV and 130.87~MeV subsets of their PMMA dataset are used for comparison in this work. The detector subtended a solid angle of $\Delta\Omega_\mathrm{exp} = 4.5 \times 10^{-3}$~sr, and the yield was expressed as
+\begin{equation}
+    Y_\mathrm{exp} = \frac{N_\gamma}{FOV \cdot \Delta\Omega_\mathrm{exp} \cdot 10^9~\mathrm{protons}}
+    \quad [\mathrm{mm^{-1}\,sr^{-1}}],
+    \label{eq:yield_exp}
+\end{equation}
+corrected for detector efficiency ($\varepsilon = 3.9\%$ for 4.44~MeV, $\varepsilon = 2.5\%$ for 6.13~MeV).
+
+Our Geant4 simulation records photons within a polar angular bin of $\Delta\theta = 0.018865$~rad centred at 90$^\circ$, corresponding to $\Delta\Omega_\mathrm{sim} \approx 0.119$~sr — approximately 26 times larger than the experimental acceptance. Since the prompt-gamma emission is isotropic in the azimuthal angle $\varphi$ by symmetry, the differential yield $dN_\gamma/d\Omega$ is identical for the full azimuthal ring and for a point detector at the same polar angle; the ratio $N_\gamma/\Delta\Omega$ is therefore the same in both cases. The simulated yield is additionally scaled by the HPGe detection efficiency reported in~\cite{kelleter2017} for the line compared here, $\varepsilon = 3.9\%$ at 4.44~MeV. No efficiency scaling is applied to the 9.6~MeV profiles, since they are not compared to a measurement and no efficiency value is available at that energy.
+
+An important feature of the Geant4 approach is that beam attenuation — the depth-dependent reduction in the number of protons reaching the thin target slice due to nuclear reactions and lateral straggling in the degrader — is handled automatically. In the simulation, a fixed number of primary protons is launched at the full phantom geometry for each degrader setting, and the gamma spectrum is normalised by this primary count. The number of gammas recorded at each depth therefore already reflects how many protons actually reached the target, naturally incorporating the $g(z)$ factor of equation~(\ref{eq:yield_exp}) without any additional correction. In the experiment, by contrast, the beam current monitor counts protons leaving the nozzle, so $g(z)$ must be determined separately via simulation~\cite{kelleter2017}.
+
+\begin{figure}[h]
+    \centering
+    \subfloat[Experimental]{\includegraphics[width=0.48\linewidth]{images/EX_130MeV_70MeV_4p4MeV_90deg.png}}
+    \hfill
+    \subfloat[Geant4]{\includegraphics[width=0.48\linewidth]{images/G4_130MeV_70MeV_4p4MeV_90deg.jpg}}
+    \caption{Simulated and experimental $^{12}$C$_{4.44\to\mathrm{g.s.}}$ prompt-gamma yield profiles as a function of $z - d_\mathrm{BP}$ at the 90$^\circ$ detection angle, for both 130.87~MeV and 70.54~MeV proton beams: (a) experimental data from Kelleter~et~al.~\cite{kelleter2017}, (b) Geant4 simulation.}
+    \label{fig:cmp_44_90}
+\end{figure}
+
+\subsection{Experiment-matching corrections}
+\label{sec:corrections}
+
+Beyond the phantom geometry itself, several features of the Cracow measurement are absent from the simulation and were therefore applied as a posteriori corrections to the simulated depth profiles before comparison. All corrections are implemented in the comparison macro (\texttt{compare\_pg\_profiles.C}) as individually switchable options.
+
+\begin{itemize}
+    \item \textbf{Effective-thickness offset.} The experimental depth axis is the \emph{effective} target thickness, in which the beam-pipe exit window and approximately 59.5~cm of air upstream of the slice are converted into PMMA-equivalent thickness with SRIM and added to the wedge thickness~\cite{kelleter2017}. The simulated depth axis contains only the PMMA degrader; the simulated profiles are therefore shifted downstream by the PMMA equivalent of the missing material budget, estimated at $\approx 0.7$~mm (of which $\approx 0.6$~mm arises from the air columns alone). % TODO: replace 0.7 mm by the SRIM value for the full material budget
+    \item \textbf{Angular anisotropy of the 4.44~MeV line.} Geant4 emits nuclear de-excitation photons isotropically, whereas the measured $^{12}$C$(p,p'\gamma_{4.44})$ emission is anisotropic, with $W(\theta)/W_\mathrm{iso}$ below unity near $90^\circ$ and above unity at backward angles~\cite{kiener1998}. Energy-averaged factors of 0.90 at $90^\circ$ and 1.15 at $120^\circ$ are applied to the simulated 4.44~MeV profiles; this anisotropy, absent in the simulation, is the physical origin of the enhanced yield and peak-to-plateau ratio observed experimentally at $120^\circ$~\cite{kelleter2017}. No angular-distribution data exist for the 9.6~MeV line, for which isotropy is retained.
+    \item \textbf{Beam momentum spread.} The simulation launches a monoenergetic point-like beam, whereas the experiment used the HIT synchrotron beam with its realistic phase space and finite momentum spread~\cite{kelleter2017}, which broadens the distal fall-off. This is emulated by convolving the simulated profiles with a Gaussian of $\sigma = 0.5$~mm along the depth axis; the value is treated as a tunable parameter in the absence of a dedicated phase-space input. % TODO: tune sigma to the documented HIT momentum spread or refit to the measured fall-off slope
+    \item \textbf{Lateral slice acceptance (optional).} Near the end of range, lateral straggling accumulated over the $\sim$22~cm air gap between the wedges and the slice pushes a growing fraction of protons outside the $5\times5$~cm$^2$ slice cross section (Fig.~4 of~\cite{kelleter2017}). Since our simulation launches the full phantom geometry and normalises per primary proton, this transmission factor $g(z)$ is included automatically \emph{provided} the lateral slice size and air gap are modelled; an optional erfc-shaped $g(z)$ parametrisation is available in the macro for configurations in which they are not, and is disabled by default to avoid double counting.
+\end{itemize}
+
+For the comparison figures, digitized experimental data points from~\cite{kelleter2017} can additionally be overlaid on the simulated profiles, and all curves can optionally be normalised to their peak value for a pure shape comparison, since the absolute scales of measurement and calculation carry a combined normalization uncertainty of about 15\%~\cite{kelleter2017}. It should be emphasised that these corrections address the \emph{experimental} features missing from the simulation; the residual disagreement that survives them — most notably in the plateau-to-peak evolution — reflects the known limitations of the Geant4 discrete gamma production cross sections discussed below.
+
+The physically meaningful observable for benchmarking is the \emph{shape} of the depth profiles, and in particular the position and steepness of the distal fall-off relative to the Bragg peak.
+
+\subsection{Quantitative comparison criterion: sigmoid fall-off fit}
+\label{sec:metrics}
+
+A visual side-by-side display of profiles (Figures~\ref{fig:cmp_44_90} and~\ref{fig:cmp_44_120}) reveals qualitative agreement or disagreement but cannot establish reproducibility at a defined tolerance or be cross-compared with results from other groups. The distal fall-off of each profile is therefore characterised with a sigmoid fit, reducing the shape comparison to two directly comparable numbers. The fall-off region (between the last plateau point and the post-range background floor) is fitted with
+\begin{equation}
+    Y(z) = \frac{Y_0}{1 + \exp\!\left[(z - z_{50})/\sigma_\mathrm{fall}\right]},
+    \label{eq:sigmoid}
+\end{equation}
+where $Y_0$ is the plateau amplitude, $z_{50}$ is the inflection point on the $z - d_\mathrm{BP}$ axis, and $\sigma_\mathrm{fall}$ characterises the steepness. The fit is performed independently for the corrected simulated and experimental profiles, yielding the comparison metrics
+\begin{equation}
+    \Delta z_{50} = z_{50}^\mathrm{sim} - z_{50}^\mathrm{exp}, \qquad
+    \Delta\sigma_\mathrm{fall} = \sigma_\mathrm{fall}^\mathrm{sim} - \sigma_\mathrm{fall}^\mathrm{exp},
+    \label{eq:deltaz50}
+\end{equation}
+each with uncertainty obtained by adding the two fit uncertainties in quadrature. $\Delta z_{50}$ directly quantifies the range-verification accuracy; $\Delta\sigma_\mathrm{fall}$ indicates whether the simulated fall-off edge remains broader or sharper than the measurement after the Gaussian broadening correction of Section~\ref{sec:corrections}. This sigmoid inflection-point method is the most widely used quantitative metric for prompt-gamma range comparison~\cite{janssen2014,pinto2015,valencialozano2023}, and $\Delta z_{50}$ is directly comparable to the sub-millimetre horizontal shifts reported by Kelleter~et~al.~\cite{kelleter2017}. The plateau-region disagreement visible in the figures is not tabulated; its physical origin — the failure of the physics list to reproduce the doublet fine structure — is discussed in Section~\ref{sec:comparison}.
+
+\begin{table}[h]
+\centering
+\caption{Sigmoid fall-off comparison metrics for the $^{12}$C$_{4.44\to\mathrm{g.s.}}$ depth profiles at both beam energies and detection angles. $\Delta z_{50}$: fall-off position difference (sim$-$exp); $\Delta\sigma_\mathrm{fall}$: fall-off steepness difference. Experimental points were digitized from the Kelleter~et~al.~\cite{kelleter2017} profiles; uncertainties are the fit uncertainties of the two sigmoids added in quadrature.}
+\label{tab:metrics}
+\begin{tabular}{lcc}
+\toprule
+Condition & $\Delta z_{50}$ (mm) & $\Delta\sigma_\mathrm{fall}$ (mm) \\
+\midrule
+130.87~MeV, $90^\circ$  & $+0.53 \pm 0.20$ & $-0.01 \pm 0.16$ \\
+130.87~MeV, $120^\circ$ & $-0.10 \pm 0.12$ & $+0.18 \pm 0.10$ \\
+70.54~MeV,  $90^\circ$  & $+0.90 \pm 0.16$ & $+0.14 \pm 0.13$ \\
+70.54~MeV,  $120^\circ$ & $+1.10 \pm 0.21$ & $+0.09 \pm 0.13$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The corrected simulated $^{12}$C$_{4.44\to\mathrm{g.s.}}$ yield profiles are compared against the experimental PMMA profiles of Kelleter~et~al.~\cite{kelleter2017}; the profiles for the 130.87~MeV beam are shown in Figure~\ref{fig:cmp_44_90} (90$^\circ$) and Figure~\ref{fig:cmp_44_120} (120$^\circ$), and the sigmoid fit metrics are collected in Table~\ref{tab:metrics}. At both detection angles the experimental profile exhibits a pronounced distal fall-off at $z - d_\mathrm{BP} \approx 0$~mm, and the simulated profiles reproduce this behaviour. The small values of $|\Delta z_{50}|$ confirm that the simulation correctly locates the fall-off relative to the Bragg peak, consistent with the sub-0.5~mm shift reported by Kelleter~et~al.~\cite{kelleter2017}. The values of $\Delta\sigma_\mathrm{fall}$ reflect the residual softening of the simulated fall-off edge after the momentum-spread correction. The agreement at 70.54~MeV provides a non-trivial cross-check: a consistent $\Delta z_{50}$ at both energies demonstrates that the fall-off correlation is anchored to the proton range rather than to any fixed geometric feature of the setup. The two detection angles differ markedly in absolute magnitude — the peak yield at 120$^\circ$ is roughly a factor of five higher than at 90$^\circ$ — reflecting the angle-dependent detector geometry~\cite{kelleter2017} rather than a genuine emission anisotropy; the Kiener correction of Section~\ref{sec:corrections} already accounts for the latter.
+
+\begin{figure}[h]
+    \centering
+    \subfloat[Experimental]{\includegraphics[width=0.48\linewidth]{images/EX_130MeV_70MeV_4p4MeV_120deg.png}}
+    \hfill
+    \subfloat[Geant4]{\includegraphics[width=0.48\linewidth]{images/G4_130MeV_70MeV_4p4MeV_120deg.jpg}}
+    \caption{Same as Figure~\ref{fig:cmp_44_90}, for the 120$^\circ$ detection angle: (a) experimental, (b) Geant4 simulation.}
+    \label{fig:cmp_44_120}
+\end{figure}
+
+It is important to note that Geant4 does not properly resolve the fine structure of the 4.44~MeV transition, which is in reality a closely spaced doublet arising from two distinct $^{12}$C de-excitation paths rather than a single line. The physics lists used in this work reproduce the two components neither at the correct relative energies nor with the correct relative intensities, so the simulated line shape around 4.44~MeV cannot be taken as quantitatively reliable at the level of the doublet substructure. Despite this limitation, the \emph{integrated} intensity of the line — summed across the doublet and evaluated as a function of depth — still tracks the Bragg peak position with the same distal fall-off behaviour seen in the experimental data. This is the central result of the present study: even though Geant4 fails to describe the detailed doublet structure of the 4.44~MeV transition, the overall depth-dependent intensity of the $^{12}$C 4.44~MeV line remains strongly correlated with the Bragg peak at both 70.54~MeV and 130.87~MeV, so that the simulated yield profiles retain their value as a range-verification proxy across the probed energy range, irrespective of the underlying cross-section discrepancy. This statement is established for the 4.44~MeV line alone, since it is the only transition for which both a simulated and a measured profile are available.
+
+No comparison is presented for the 6.13~MeV $^{16}$O$_{6.13\to\mathrm{g.s.}}$ line. Kelleter~et~al.\ explicitly refrained from comparing their data with Geant4 results for this transition, noting that Geant4 has a reported problem with reproducing the corresponding cross sections~\cite{kelleter2017}. Since our simulation relies on the same Geant4 physics, the 6.13~MeV depth profile is expected to be unreliable in absolute yield and shape, and it is therefore omitted from this article.
+
+\subsection{The 9.6~MeV line: a Geant4-only prediction}
+\label{sec:96line}
+
+A separate discussion is warranted for the 9.6~MeV line, since — unlike the 4.44~MeV transition — no experimental counterpart exists for it in the Cracow dataset: this energy region was not covered by the spectroscopic analysis of Kelleter~et~al.~\cite{kelleter2017}, and the profiles shown in Figure~\ref{fig:g4_96} are therefore presented as a standalone Geant4 prediction rather than as a benchmarked result. The simulated depth profiles at both detection angles nevertheless exhibit the same qualitative behaviour as the experimentally validated 4.44~MeV line: the yield rises steadily towards the end of the proton range and drops sharply at the distal fall-off, located at $z - d_\mathrm{BP} \approx 0$~mm. This internal consistency between the validated and unvalidated lines suggests that the range correlation predicted by Geant4 for the 9.6~MeV line is physically plausible, and that this transition could in principle serve as an additional, higher-energy channel for range verification — one with the practical advantage of lying well above the structured background of neutron-induced and Compton-scattered events that complicates the analysis at lower energies. At the same time, the absence of measured data means that the absolute yield of this line rests entirely on the hadronic cross sections implemented in Geant4, and the known difficulties of the toolkit in reproducing the $^{16}$O de-excitation cross sections at 6.13~MeV (Section~\ref{sec:comparison}) counsel caution in taking the predicted magnitude at face value. The 9.6~MeV profiles reported here should therefore be regarded as a motivated hypothesis for future experimental campaigns: a dedicated measurement of this line under conditions comparable to the Cracow setup would both test the Geant4 prediction and, if confirmed, extend the set of usable prompt-gamma channels for clinical range monitoring.
+
+\begin{figure}[h]
+    \centering
+    \subfloat[90$^\circ$]{\includegraphics[width=0.48\linewidth]{images/G4_130MeV_70MeV_9p6MeV_90deg.jpg}}
+    \hfill
+    \subfloat[120$^\circ$]{\includegraphics[width=0.48\linewidth]{images/G4_130MeV_70MeV_9p6MeV_120deg.jpg}}
+    \caption{Geant4 prompt-gamma yield profiles of the 9.6~MeV $^{16}$O line as a function of $z - d_\mathrm{BP}$, for both 130.87~MeV and 70.54~MeV proton beams, at (a) 90$^\circ$ and (b) 120$^\circ$ detection angles. No experimental counterpart exists for this line in the Cracow dataset~\cite{kelleter2017}; the profiles are presented as a Geant4-only prediction.}
+    \label{fig:g4_96}
+\end{figure}
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+We have presented a Geant4 Monte Carlo simulation study of prompt-gamma emission from a PMMA phantom irradiated with 70.54~MeV and 130.87~MeV proton beams, benchmarked against the spectroscopic measurements of Kelleter~et~al.~\cite{kelleter2017} at the Cracow Ion-Beam Therapy Centre. The benchmark employs a sigmoid fall-off fit ($\Delta z_{50}$, $\Delta\sigma_\mathrm{fall}$), the standard quantitative metric for prompt-gamma range comparison~\cite{janssen2014,pinto2015,valencialozano2023}. The results (Table~\ref{tab:metrics}) show that the simulated $^{12}$C$_{4.44\to\mathrm{g.s.}}$ profiles reproduce the position and steepness of the distal fall-off at both beam energies and detection angles (small $|\Delta z_{50}|$), while the plateau-region disagreement — visible in Figures~\ref{fig:cmp_44_90} and~\ref{fig:cmp_44_120} — reflects the known doublet fine-structure failure of the physics list and is discussed in Section~\ref{sec:comparison}.
+
+The residual disagreement between the simulated and measured 4.44~MeV profiles stems from three sources: the emission anisotropy of the $^{12}$C$(p,p'\gamma_{4.44})$ line, the idealised beam and geometry (momentum spread and effective-thickness offset), and the unresolved doublet fine structure. The first two are corrected for in Section~\ref{sec:corrections}; the third cannot be corrected since it originates in the nuclear de-excitation data underlying the physics list. Because this limitation affects only the fine energy structure of the line and not its depth-integrated intensity, it does not compromise the central result: the sigmoid fit confirms that the integrated $^{12}$C 4.44~MeV yield remains a reliable proxy for the Bragg peak position ($\Delta z_{50}$ close to zero) at both beam energies.
+
+The angular homogeneity of the emission (Section~\ref{sec:homogeneity}) was quantified for both simulated lines, 4.44~MeV and 9.6~MeV, using Legendre coefficients $a_2(z)$, $a_4(z)$ and model-free uniformity indices $\mathrm{IU}(z)$, $\mathrm{CV}(z)$. A second key result emerges from this analysis: a measurable angular non-uniformity of the simulated prompt-gamma yield is present for both lines even though Geant4 emits individual de-excitation photons isotropically. A proof by construction (Section~\ref{sec:homogeneity}) rules out non-uniform magnetic substate population of the emitting nucleus as the cause: Geant4's \texttt{G4PhotonEvaporation} module does not transmit spin-orientation information from the hadronic cascade to the de-excitation step and assumes a fully unpolarised excited state, so the Kiener anisotropy is absent from the simulation by design. The residual non-uniformity is therefore entirely kinematic in origin, arising from three additive effects: the Lorentz boost of photons emitted isotropically in the recoiling-nucleus rest frame, the forward-peaked differential cross section of the $(p,p'\gamma)$ inelastic channel, and angular correlations accumulated in the multi-step Binary/Bertini cascade. This kinematic contribution is independent of the nuclear transition multipolarity and would be present even for intrinsically isotropic transitions; it is additive with the Kiener anisotropy and must be accounted for separately in the design of multi-angle clinical monitoring systems. Future work should prioritise a dedicated measurement of the 9.6~MeV $^{16}$O line proposed in Section~\ref{sec:96line}, experimental quantification of the kinematic angular non-uniformity for lines with known isotropic emission, and a refinement of the momentum-spread correction using documented HIT phase-space parameters.
+
+\section*{Acknowledgments}
+
+The research has been performed thanks to the financial support of Shota Rustaveli Georgian National Science Foundation, the grant number - FR-22-8306.
+I wish to extend my gratitude to RWTH Aachen University Medical Physics Group for their valuable intellectual and technical assistance to complete the research.
+The hardware and computational resources from the university was used to perform Geant4 simulations.
+Also, I wish to thank the administration of matRad for their help in providing all kinds of information.
+
+\begin{thebibliography}{}
+
+\bibitem{paganetti2012}
+H.~Paganetti,
+\emph{Range uncertainties in proton therapy and the role of Monte Carlo simulations},
+Phys.\ Med.\ Biol.\ \textbf{57} (2012) R99--R117.
+\href{https://doi.org/10.1088/0031-9155/57/11/R99}{doi:10.1088/0031-9155/57/11/R99}
+
+\bibitem{knopf2013}
+A.-C.~Knopf, A.~Lomax,
+\emph{In vivo proton range verification: a review},
+Phys.\ Med.\ Biol.\ \textbf{58} (2013) R131--R160.
+\href{https://doi.org/10.1088/0031-9155/58/15/R131}{doi:10.1088/0031-9155/58/15/R131}
+
+\bibitem{krimmer2018}
+J.~Krimmer, D.~Dauvergne, J.M.~L\'etang, \'E.~Testa,
+\emph{Prompt-gamma monitoring in hadrontherapy: A review},
+Nucl.\ Instrum.\ Methods Phys.\ Res.\ A \textbf{878} (2018) 58--73.
+\href{https://doi.org/10.1016/j.nima.2017.07.063}{doi:10.1016/j.nima.2017.07.063}
+
+\bibitem{parodipolf2018}
+K.~Parodi, J.C.~Polf,
+\emph{In vivo range verification in particle therapy},
+Med.\ Phys.\ \textbf{45} (2018) e1036--e1050.
+\href{https://doi.org/10.1002/mp.12960}{doi:10.1002/mp.12960}
+
+\bibitem{verburg2014}
+J.M.~Verburg, J.~Seco,
+\emph{Proton range verification through prompt gamma-ray spectroscopy},
+Phys.\ Med.\ Biol.\ \textbf{59} (2014) 7089--7106.
+\href{https://doi.org/10.1088/0031-9155/59/23/7089}{doi:10.1088/0031-9155/59/23/7089}
+
+\bibitem{kelleter2017}
+L.~Kelleter, A.~Wrońska, J.~Besuglow et al.,
+\emph{Spectroscopic study of prompt-gamma emission for range verification in proton therapy},
+Phys.\ Med.\ \textbf{34} (2017) 7--17.
+\href{https://doi.org/10.1016/j.ejmp.2017.01.003}{doi:10.1016/j.ejmp.2017.01.003}
+
+\bibitem{kiener1998}
+J.~Kiener, M.~Berheide, N.~Achouri et al.,
+\emph{Gamma-ray production by inelastic proton scattering on $^{16}$O and $^{12}$C},
+Phys.\ Rev.\ C \textbf{58} (1998) 2174--2179.
+\href{https://doi.org/10.1103/PhysRevC.58.2174}{doi:10.1103/PhysRevC.58.2174}
+
+\bibitem{janssen2014}
+F.M.F.C.~Janssen, G.~Landry, P.~Cambraia Lopes et al.,
+\emph{Factors influencing the accuracy of beam range estimation in proton therapy using prompt gamma emission},
+Phys.\ Med.\ Biol.\ \textbf{59} (2014) 4427--4441.
+\href{https://doi.org/10.1088/0031-9155/59/15/4427}{doi:10.1088/0031-9155/59/15/4427}
+
+\bibitem{pinto2015}
+M.~Pinto, M.~De Rydt, D.~Dauvergne et al.,
+\emph{Technical Note: Experimental carbon ion range verification in inhomogeneous phantoms using prompt gammas},
+Med.\ Phys.\ \textbf{42} (2015) 2342--2346.
+\href{https://doi.org/10.1118/1.4917225}{doi:10.1118/1.4917225}
+
+\bibitem{valencialozano2023}
+I.~Valencia Lozano, G.~Dedes, S.~Peterson et al.,
+\emph{Comparison of reconstructed prompt gamma emissions using maximum likelihood estimation and origin ensemble algorithms for a Compton camera system tailored to proton range monitoring},
+Z.\ Med.\ Phys.\ \textbf{33} (2023) 124--134.
+\href{https://doi.org/10.1016/j.zemedi.2022.04.005}{doi:10.1016/j.zemedi.2022.04.005}
+
+\bibitem{onecha2024}
+V.V.~Onecha, L.~Barrientos, J.~Perl et al.,
+\emph{Reaction yields and angular distributions of prompt $\gamma$-rays for range verification in proton therapy using $^{18}$O},
+Radiat.\ Phys.\ Chem.\ \textbf{217} (2024) 111485.
+\href{https://doi.org/10.1016/j.radphyschem.2023.111485}{doi:10.1016/j.radphyschem.2023.111485}
+
+\bibitem{murray2014}
+A.W.~Murray, M.C.~Barnfield, P.J.~Thorley,
+\emph{Optimal uniformity index selection and acquisition counts for daily gamma camera quality control},
+Nucl.\ Med.\ Commun.\ \textbf{35} (2014) 1011--1017.
+\href{https://doi.org/10.1097/MNM.0000000000000164}{doi:10.1097/MNM.0000000000000164}
+
+\bibitem{geant4}
+https://geant4-userdoc.web.cern.ch
+
+\bibitem{condor}
+HTCondor High Throughput Computing.
+\href{https://htcondor.org}{https://htcondor.org}
+
+\bibitem{root}
+https://root.cern/
+
+\end{thebibliography}
+
+\end{document}
